@@ -1,28 +1,31 @@
 import { PORTS } from "./ports";
 
-// All sandcastle services live under /opt/sandcastle/ to stay out of $HOME
-export const SERVICE_DIR = "/opt/sandcastle";
+// All vdesk services live under /opt/vdesk/ to stay out of $HOME
+export const SERVICE_DIR = "/opt/vdesk";
 
 // Xpra display number - use :10 to avoid low display warnings
 export const XPRA_DISPLAY = ":10";
+export const VNC_DISPLAY = ":11";
+export const KASM_DISPLAY = ":12";
+export const RDP_DISPLAY = ":13";
 
-// Well-known D-Bus session bus socket path used by all sandcastle processes.
+// Well-known D-Bus session bus socket path used by all vdesk processes.
 // dbus-daemon is started by the Xpra wrapper and writes its address here.
-export const DBUS_SOCKET_PATH = "/tmp/sandcastle-dbus";
+export const DBUS_SOCKET_PATH = "/tmp/vdesk-dbus";
 
 // Shared file where the sandbox bridge writes notification/settings state.
 // The Node.js sandbox service reads this to serve /bridge/* API routes.
-export const BRIDGE_STATE_PATH = "/tmp/sandcastle-bridge.json";
+export const BRIDGE_STATE_PATH = "/tmp/vdesk-bridge.json";
 
 export function getEcosystemConfig(): string {
-  const xpraStartScript = `${SERVICE_DIR}/xpra-start.sh`;
+  const displayStartScript = `${SERVICE_DIR}/display-start.sh`;
   const sandboxBridgeScript = `${SERVICE_DIR}/sandbox-bridge.py`;
 
   return `const HOME = process.env.HOME || require("os").homedir();
 module.exports = {
   apps: [
     {
-      name: "sandcastle-svc",
+      name: "vdesk-svc",
       script: "${SERVICE_DIR}/service.js",
       cwd: "${SERVICE_DIR}",
       watch: false,
@@ -43,14 +46,16 @@ module.exports = {
       max_restarts: 10,
     },
     {
-      name: "xpra",
-      script: "${xpraStartScript}",
+      name: "display",
+      script: "${displayStartScript}",
       interpreter: "bash",
       cwd: HOME,
       watch: false,
       autorestart: true,
       max_restarts: 5,
       env: {
+        DISPLAY_CLIENT: process.env.DISPLAY_CLIENT || "xpra",
+        WORKSPACE_EXPERIENCE: process.env.WORKSPACE_EXPERIENCE || "gui",
         DBUS_SESSION_BUS_ADDRESS: "unix:path=${DBUS_SOCKET_PATH}",
       },
     },
@@ -100,7 +105,7 @@ module.exports = {
 export function getSandboxBridgeScript(): string {
   return `#!/usr/bin/env python3
 """
-sandcastle sandbox bridge daemon.
+vdesk sandbox bridge daemon.
 
 Bridges D-Bus services and monitors .desktop files, communicating with the
 browser via a shared JSON state file that the Node.js sandbox service reads.
@@ -123,7 +128,7 @@ import dbus.service
 import dbus.mainloop.glib
 from gi.repository import GLib
 
-STATE_PATH = os.environ.get("BRIDGE_STATE_PATH", "/tmp/sandcastle-bridge.json")
+STATE_PATH = os.environ.get("BRIDGE_STATE_PATH", "/tmp/vdesk-bridge.json")
 LOCK_PATH = STATE_PATH + ".lock"
 
 # ---- Shared state ----
@@ -285,7 +290,7 @@ class NotificationDaemon(dbus.service.Object):
     @dbus.service.method("org.freedesktop.Notifications",
                          in_signature="", out_signature="ssss")
     def GetServerInformation(self):
-        return ("sandcastle-bridge", "sandcastle", "1.0", "1.2")
+        return ("vdesk-bridge", "vdesk", "1.0", "1.2")
 
     @dbus.service.signal("org.freedesktop.Notifications",
                          signature="uu")
@@ -577,7 +582,7 @@ export GIO_USE_SYSTEMD=0
 # X11 apps that use Xpra's internal notification mechanism.
 
 exec xpra start ${XPRA_DISPLAY} \\
-  --bind-ws=0.0.0.0:${PORTS.XPRA} \\
+  --bind-ws=0.0.0.0:${PORTS.DISPLAY} \\
   --html=on \\
   --sharing=yes \\
   --no-daemon \\
@@ -590,4 +595,369 @@ exec xpra start ${XPRA_DISPLAY} \\
 `;
 }
 
+export function getNoVncStartScript(): string {
+  return `#!/bin/bash
+set -euo pipefail
 
+SOCKET="${DBUS_SOCKET_PATH}"
+rm -f "$SOCKET"
+
+dbus-daemon --session --nofork --address="unix:path=$SOCKET" &
+DBUS_PID=$!
+
+for i in $(seq 1 20); do
+  [ -S "$SOCKET" ] && break
+  sleep 0.1
+done
+
+export DBUS_SESSION_BUS_ADDRESS="unix:path=$SOCKET"
+export GIO_USE_SYSTEMD=0
+export DISPLAY=${VNC_DISPLAY}
+WEB_ROOT="${SERVICE_DIR}/novnc"
+[ -f "$WEB_ROOT/vnc.html" ] || WEB_ROOT="/usr/share/novnc"
+
+cleanup() {
+  for pid in "\${VNC_PID:-}" "\${WS_PID:-}" "\${XVFB_PID:-}" "\${DBUS_PID:-}"; do
+    [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
+  done
+}
+trap cleanup EXIT INT TERM
+
+if command -v x11vnc >/dev/null 2>&1; then
+  Xvfb ${VNC_DISPLAY} -screen 0 1920x1080x24 -nolisten tcp &
+  XVFB_PID=$!
+  sleep 0.5
+  x11vnc -display ${VNC_DISPLAY} -forever -shared -rfbport 5901 -nopw -localhost &
+elif command -v x0vncserver >/dev/null 2>&1; then
+  Xvfb ${VNC_DISPLAY} -screen 0 1920x1080x24 -nolisten tcp &
+  XVFB_PID=$!
+  sleep 0.5
+  x0vncserver -display ${VNC_DISPLAY} -rfbport 5901 -SecurityTypes None -localhost -fg &
+elif command -v Xvnc >/dev/null 2>&1; then
+  Xvnc ${VNC_DISPLAY} -geometry 1920x1080 -depth 24 -rfbport 5901 -localhost -SecurityTypes None -fg &
+else
+  echo "No VNC server found (x11vnc, x0vncserver, or Xvnc required)" >&2
+  exit 1
+fi
+VNC_PID=$!
+
+# Start a minimal GUI session for browser-based desktop stacks.
+if command -v openbox >/dev/null 2>&1; then
+  DISPLAY=${VNC_DISPLAY} openbox >/tmp/openbox.log 2>&1 &
+elif command -v twm >/dev/null 2>&1; then
+  DISPLAY=${VNC_DISPLAY} twm >/tmp/twm.log 2>&1 &
+fi
+if command -v xterm >/dev/null 2>&1; then
+  DISPLAY=${VNC_DISPLAY} xterm -geometry 120x34+40+40 -title "vdesk Terminal" >/tmp/xterm.log 2>&1 &
+fi
+
+python3 -m websockify --web="$WEB_ROOT" ${PORTS.DISPLAY} localhost:5901 &
+WS_PID=$!
+
+wait "$WS_PID"
+`;
+}
+
+export function getVncStartScript(): string {
+  return `#!/bin/bash
+set -euo pipefail
+
+SOCKET="${DBUS_SOCKET_PATH}"
+rm -f "$SOCKET"
+
+dbus-daemon --session --nofork --address="unix:path=$SOCKET" &
+DBUS_PID=$!
+
+for i in $(seq 1 20); do
+  [ -S "$SOCKET" ] && break
+  sleep 0.1
+done
+
+export DBUS_SESSION_BUS_ADDRESS="unix:path=$SOCKET"
+export GIO_USE_SYSTEMD=0
+export DISPLAY=${VNC_DISPLAY}
+WEB_ROOT="${SERVICE_DIR}/novnc"
+[ -f "$WEB_ROOT/vnc.html" ] || WEB_ROOT="/usr/share/novnc"
+
+cleanup() {
+  for pid in "\${VNC_PID:-}" "\${WS_PID:-}" "\${XVFB_PID:-}" "\${DBUS_PID:-}"; do
+    [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
+  done
+}
+trap cleanup EXIT INT TERM
+
+if command -v x11vnc >/dev/null 2>&1; then
+  Xvfb ${VNC_DISPLAY} -screen 0 1920x1080x24 -nolisten tcp &
+  XVFB_PID=$!
+  sleep 0.5
+  x11vnc -display ${VNC_DISPLAY} -forever -shared -rfbport 5901 -nopw -localhost &
+elif command -v x0vncserver >/dev/null 2>&1; then
+  Xvfb ${VNC_DISPLAY} -screen 0 1920x1080x24 -nolisten tcp &
+  XVFB_PID=$!
+  sleep 0.5
+  x0vncserver -display ${VNC_DISPLAY} -rfbport 5901 -SecurityTypes None -localhost -fg &
+elif command -v Xvnc >/dev/null 2>&1; then
+  Xvnc ${VNC_DISPLAY} -geometry 1920x1080 -depth 24 -rfbport 5901 -localhost -SecurityTypes None -fg &
+else
+  echo "No VNC server found (x11vnc, x0vncserver, or Xvnc required)" >&2
+  exit 1
+fi
+VNC_PID=$!
+
+if command -v openbox >/dev/null 2>&1; then
+  DISPLAY=${VNC_DISPLAY} openbox >/tmp/openbox.log 2>&1 &
+elif command -v twm >/dev/null 2>&1; then
+  DISPLAY=${VNC_DISPLAY} twm >/tmp/twm.log 2>&1 &
+fi
+if command -v xterm >/dev/null 2>&1; then
+  DISPLAY=${VNC_DISPLAY} xterm -geometry 120x34+40+40 -title "vdesk Terminal" >/tmp/xterm.log 2>&1 &
+fi
+
+# Browser bridge for the web app surface
+python3 -m websockify --web="$WEB_ROOT" ${PORTS.DISPLAY} localhost:5901 &
+WS_PID=$!
+
+wait "$WS_PID"
+`;
+}
+
+export function getKasmVncStartScript(): string {
+  return `#!/bin/bash
+set -euo pipefail
+
+SOCKET="${DBUS_SOCKET_PATH}"
+rm -f "$SOCKET"
+
+dbus-daemon --session --nofork --address="unix:path=$SOCKET" &
+DBUS_PID=$!
+
+for i in $(seq 1 20); do
+  [ -S "$SOCKET" ] && break
+  sleep 0.1
+done
+
+export DBUS_SESSION_BUS_ADDRESS="unix:path=$SOCKET"
+export GIO_USE_SYSTEMD=0
+export DISPLAY=${KASM_DISPLAY}
+WEB_ROOT="${SERVICE_DIR}/novnc"
+[ -f "$WEB_ROOT/vnc.html" ] || WEB_ROOT="/usr/share/novnc"
+
+cleanup() {
+  for pid in "\${KASM_PID:-}" "\${VNC_PID:-}" "\${WS_PID:-}" "\${XVFB_PID:-}" "\${DBUS_PID:-}"; do
+    [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
+  done
+}
+trap cleanup EXIT INT TERM
+
+if command -v kasmvncserver >/dev/null 2>&1; then
+  kasmvncserver \
+    -interface 0.0.0.0 \
+    -websocketPort ${PORTS.DISPLAY} \
+    -geometry 1920x1080 \
+    -SecurityTypes None \
+    -localhost no \
+    -fg &
+  KASM_PID=$!
+  wait "$KASM_PID"
+  exit 0
+fi
+
+# Fallback: expose a Kasm-compatible browser experience on the same port.
+if command -v x11vnc >/dev/null 2>&1; then
+  Xvfb ${KASM_DISPLAY} -screen 0 1920x1080x24 -nolisten tcp &
+  XVFB_PID=$!
+  sleep 0.5
+  x11vnc -display ${KASM_DISPLAY} -forever -shared -rfbport 5902 -nopw -localhost &
+elif command -v x0vncserver >/dev/null 2>&1; then
+  Xvfb ${KASM_DISPLAY} -screen 0 1920x1080x24 -nolisten tcp &
+  XVFB_PID=$!
+  sleep 0.5
+  x0vncserver -display ${KASM_DISPLAY} -rfbport 5902 -SecurityTypes None -localhost -fg &
+elif command -v Xvnc >/dev/null 2>&1; then
+  Xvnc ${KASM_DISPLAY} -geometry 1920x1080 -depth 24 -rfbport 5902 -localhost -SecurityTypes None -fg &
+else
+  echo "No VNC server found (x11vnc, x0vncserver, or Xvnc required)" >&2
+  exit 1
+fi
+VNC_PID=$!
+if command -v openbox >/dev/null 2>&1; then
+  DISPLAY=${KASM_DISPLAY} openbox >/tmp/openbox.log 2>&1 &
+elif command -v twm >/dev/null 2>&1; then
+  DISPLAY=${KASM_DISPLAY} twm >/tmp/twm.log 2>&1 &
+fi
+if command -v xterm >/dev/null 2>&1; then
+  DISPLAY=${KASM_DISPLAY} xterm -geometry 120x34+40+40 -title "vdesk Terminal" >/tmp/xterm.log 2>&1 &
+fi
+python3 -m websockify --web="$WEB_ROOT" ${PORTS.DISPLAY} localhost:5902 &
+WS_PID=$!
+
+wait "$WS_PID"
+`;
+}
+
+export function getRdpStartScript(): string {
+  return `#!/bin/bash
+set -euo pipefail
+
+SOCKET="${DBUS_SOCKET_PATH}"
+rm -f "$SOCKET"
+
+dbus-daemon --session --nofork --address="unix:path=$SOCKET" &
+DBUS_PID=$!
+
+for i in $(seq 1 20); do
+  [ -S "$SOCKET" ] && break
+  sleep 0.1
+done
+
+export DBUS_SESSION_BUS_ADDRESS="unix:path=$SOCKET"
+export GIO_USE_SYSTEMD=0
+export DISPLAY=${RDP_DISPLAY}
+WEB_ROOT="${SERVICE_DIR}/novnc"
+[ -f "$WEB_ROOT/vnc.html" ] || WEB_ROOT="/usr/share/novnc"
+
+cleanup() {
+  for pid in "\${XRDP_PID:-}" "\${SESMAN_PID:-}" "\${VNC_PID:-}" "\${WS_PID:-}" "\${XVFB_PID:-}" "\${DBUS_PID:-}"; do
+    [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
+  done
+}
+trap cleanup EXIT INT TERM
+
+xrdp-sesman --nodaemon &
+SESMAN_PID=$!
+
+xrdp --nodaemon >/tmp/xrdp.log 2>&1 &
+XRDP_PID=$!
+
+if command -v x11vnc >/dev/null 2>&1; then
+  Xvfb ${RDP_DISPLAY} -screen 0 1920x1080x24 -nolisten tcp &
+  XVFB_PID=$!
+  sleep 0.5
+  x11vnc -display ${RDP_DISPLAY} -forever -shared -rfbport 5903 -nopw -localhost &
+elif command -v x0vncserver >/dev/null 2>&1; then
+  Xvfb ${RDP_DISPLAY} -screen 0 1920x1080x24 -nolisten tcp &
+  XVFB_PID=$!
+  sleep 0.5
+  x0vncserver -display ${RDP_DISPLAY} -rfbport 5903 -SecurityTypes None -localhost -fg &
+elif command -v Xvnc >/dev/null 2>&1; then
+  Xvnc ${RDP_DISPLAY} -geometry 1920x1080 -depth 24 -rfbport 5903 -localhost -SecurityTypes None -fg &
+else
+  echo "No VNC server found (x11vnc, x0vncserver, or Xvnc required)" >&2
+  exit 1
+fi
+VNC_PID=$!
+
+if command -v openbox >/dev/null 2>&1; then
+  DISPLAY=${RDP_DISPLAY} openbox >/tmp/openbox.log 2>&1 &
+elif command -v twm >/dev/null 2>&1; then
+  DISPLAY=${RDP_DISPLAY} twm >/tmp/twm.log 2>&1 &
+fi
+if command -v xterm >/dev/null 2>&1; then
+  DISPLAY=${RDP_DISPLAY} xterm -geometry 120x34+40+40 -title "vdesk Terminal" >/tmp/xterm.log 2>&1 &
+fi
+
+python3 -m websockify --web="$WEB_ROOT" ${PORTS.DISPLAY} localhost:5903 &
+WS_PID=$!
+wait "$WS_PID"
+`;
+}
+
+export function getWebRtcStartScript(): string {
+  return `#!/bin/bash
+set -euo pipefail
+
+SOCKET="${DBUS_SOCKET_PATH}"
+rm -f "$SOCKET"
+
+dbus-daemon --session --nofork --address="unix:path=$SOCKET" &
+DBUS_PID=$!
+
+for i in $(seq 1 20); do
+  [ -S "$SOCKET" ] && break
+  sleep 0.1
+done
+
+export DBUS_SESSION_BUS_ADDRESS="unix:path=$SOCKET"
+export GIO_USE_SYSTEMD=0
+
+# WebRTC profile: run Xpra in high-frame-rate video mode and expose
+# the browser client from the unified display port.
+exec xpra start ${XPRA_DISPLAY} \\
+  --bind-ws=0.0.0.0:${PORTS.DISPLAY} \\
+  --html=on \\
+  --sharing=yes \\
+  --no-daemon \\
+  --systemd-run=no \\
+  --notifications=yes \\
+  --webcam=no \\
+  --pulseaudio=no \\
+  --speaker=no \\
+  --microphone=no \\
+  --video=yes \\
+  --min-quality=40 \\
+  --min-speed=70
+`;
+}
+
+export function getCliDisplayStartScript(): string {
+  return `#!/bin/bash
+set -euo pipefail
+
+WEB_ROOT="/tmp/vdesk-cli-display"
+mkdir -p "$WEB_ROOT"
+cat > "$WEB_ROOT/index.html" << 'EOF'
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>vdesk CLI</title>
+</head>
+<body style="font-family: ui-sans-serif, system-ui; margin: 2rem;">
+  <h1>vdesk CLI workspace</h1>
+  <p>This workspace is configured as CLI-only.</p>
+</body>
+</html>
+EOF
+
+python3 -m http.server ${PORTS.DISPLAY} --directory "$WEB_ROOT"
+`;
+}
+
+export function getDisplayStartScript(): string {
+  return `#!/bin/bash
+set -euo pipefail
+
+CLIENT="\${DISPLAY_CLIENT:-xpra}"
+EXPERIENCE="\${WORKSPACE_EXPERIENCE:-gui}"
+
+if [ "$EXPERIENCE" = "cli" ]; then
+  exec "${SERVICE_DIR}/cli-display-start.sh"
+fi
+
+case "$CLIENT" in
+  xpra)
+    exec "${SERVICE_DIR}/xpra-start.sh"
+    ;;
+  novnc)
+    exec "${SERVICE_DIR}/novnc-start.sh"
+    ;;
+  vnc)
+    exec "${SERVICE_DIR}/vnc-start.sh"
+    ;;
+  kasmvnc)
+    exec "${SERVICE_DIR}/kasmvnc-start.sh"
+    ;;
+  rdp)
+    exec "${SERVICE_DIR}/rdp-start.sh"
+    ;;
+  webrtc)
+    exec "${SERVICE_DIR}/webrtc-start.sh"
+    ;;
+  *)
+    echo "Unsupported DISPLAY_CLIENT: $CLIENT" >&2
+    exit 1
+    ;;
+esac
+`;
+}

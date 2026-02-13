@@ -6,6 +6,8 @@ import { getSandbox } from "@/lib/sandbox/client";
 import { getAuthedWorkspace } from "@/lib/api/get-authed-workspace";
 import { markWorkspaceStopped } from "@/lib/sandbox/mark-workspace-stopped";
 import { isLiveSandboxStatus } from "@/lib/sandbox/status";
+import { getDisplayHealthPath } from "@/lib/display-clients";
+import { isValidDisplayClient } from "@/lib/runtime/profiles";
 
 async function isHttpEndpointReady(url: string, timeoutMs = 2000): Promise<boolean> {
   const controller = new AbortController();
@@ -58,19 +60,27 @@ export async function GET(
     : workspace;
 
   let servicesReady = false;
-  let xpraReady = false;
+  let displayReady = false;
   if (sandbox) {
+    const isCliWorkspace = workspace.experience === "cli";
+    const displayClient = isValidDisplayClient(workspace.displayClient)
+      ? workspace.displayClient
+      : "xpra";
     servicesReady = await isHttpEndpointReady(
       `https://${sandbox.domains.services}/health`,
     );
-    xpraReady = await isHttpEndpointReady(`https://${sandbox.domains.xpra}`);
+    displayReady = isCliWorkspace
+      ? true
+      : await isHttpEndpointReady(
+          `https://${sandbox.domains.display}${getDisplayHealthPath(displayClient)}`,
+        );
   }
 
   return NextResponse.json({
     workspace: current,
     sandbox,
     servicesReady,
-    xpraReady,
+    displayReady,
     // Signal to the client that the sandbox died so it can auto-recover
     sandboxLost,
     canRecover: sandboxLost && !!(current.snapshotId),

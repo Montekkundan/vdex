@@ -4,12 +4,20 @@ import { setGoldenSnapshotId } from "./golden-snapshot";
 import { SANDBOX_PORTS } from "./ports";
 import { getServiceCode } from "./sandbox-services";
 import {
+  getCliDisplayStartScript,
+  getDisplayStartScript,
   getEcosystemConfig,
+  getKasmVncStartScript,
+  getNoVncStartScript,
+  getRdpStartScript,
+  getVncStartScript,
+  getWebRtcStartScript,
   getXpraStartScript,
   getSandboxBridgeScript,
   SERVICE_DIR,
   XPRA_DISPLAY,
 } from "./ecosystem-config";
+import type { WorkspaceExperience } from "@/types/workspace";
 import { getCodeServerFiles } from "./vscode";
 
 const XPRA_LTS = "https://xpra.org/lts/almalinux/9/x86_64";
@@ -31,9 +39,11 @@ export interface GoldenSnapshotResult {
 export async function buildGoldenSnapshot(options?: {
   installScript?: string;
   logPrefix?: string;
+  experience?: WorkspaceExperience;
 }): Promise<GoldenSnapshotResult> {
   const prefix = options?.logPrefix ?? "golden-snapshot";
   const installScript = options?.installScript;
+  const experience = options?.experience ?? "gui";
 
   const sandbox = await Sandbox.create({
     runtime: "node24",
@@ -49,7 +59,7 @@ export async function buildGoldenSnapshot(options?: {
     });
     if (result.exitCode !== 0) {
       const stderr = await result.stderr();
-      console.error(`[${prefix}] ${label} failed:`, stderr);
+      throw new Error(`[${prefix}] ${label} failed: ${stderr}`);
     }
     console.log(`[${prefix}] ${label} done`);
     return result;
@@ -93,7 +103,7 @@ XPRACSP
 # Disable fake Xinerama -- libfakeXinerama is not available on Amazon Linux 2023
 # and the single-display sandbox doesn't need multi-monitor emulation.
 # Without this, Xpra sets LD_PRELOAD to a nonexistent .so, causing warnings.
-sudo tee /etc/xpra/conf.d/99_sandcastle.conf > /dev/null << 'XPRACONF'
+sudo tee /etc/xpra/conf.d/99_vdesk.conf > /dev/null << 'XPRACONF'
 fake-xinerama=no
 XPRACONF
 
@@ -105,7 +115,7 @@ XWRAPEOF
 
 sudo tee /etc/profile.d/sandbox-display.sh > /dev/null << 'PROFILEEOF'
 export DISPLAY=${XPRA_DISPLAY}
-export DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/sandcastle-dbus
+export DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/vdesk-dbus
 export GIO_USE_SYSTEMD=0
 PROFILEEOF
 
@@ -278,7 +288,171 @@ else
 fi
 `;
 
-  await all({
+  const displayDepsScript = `
+set -euo pipefail
+
+# VNC server backend for noVNC/VNC/KasmVNC fallback
+sudo dnf install -y tigervnc-server-minimal || sudo dnf install -y tigervnc-server
+
+# websockify runtime used by display-start scripts
+python3 -m pip install --user --upgrade pip
+python3 -m pip install --user websockify
+python3 -c "import websockify"
+
+# noVNC static web client (distro package is not consistently available)
+mkdir -p ${SERVICE_DIR}
+if [ ! -f "${SERVICE_DIR}/novnc/vnc.html" ]; then
+  rm -rf /tmp/novnc-src
+  git clone --depth 1 https://github.com/novnc/noVNC.git /tmp/novnc-src
+  rm -rf "${SERVICE_DIR}/novnc"
+  mv /tmp/novnc-src "${SERVICE_DIR}/novnc"
+fi
+test -f "${SERVICE_DIR}/novnc/vnc.html"
+
+# RDP daemon (prefer package, fallback to source build)
+if ! command -v xrdp >/dev/null 2>&1; then
+  sudo dnf install -y xrdp || true
+fi
+
+if ! command -v xrdp >/dev/null 2>&1; then
+  sudo dnf install -y gcc gcc-c++ make autoconf automake libtool pkgconfig nasm \
+    openssl-devel pam-devel libX11-devel libXfixes-devel libXrandr-devel libxkbfile-devel \
+    fuse-devel pixman-devel systemd-devel
+  rm -rf /tmp/xrdp-src
+  git clone --depth 1 --branch v0.10.3 https://github.com/neutrinolabs/xrdp.git /tmp/xrdp-src
+  cd /tmp/xrdp-src
+  ./bootstrap
+  ./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var
+  make -j"$(nproc)"
+  sudo make install
+  sudo ldconfig || true
+fi
+
+find_bin() {
+  local name="$1"
+  shift
+  if command -v "$name" >/dev/null 2>&1; then
+    command -v "$name"
+    return 0
+  fi
+  for p in "$@"; do
+    if [ -x "$p" ]; then
+      echo "$p"
+      return 0
+    fi
+  done
+  return 1
+}
+
+XRDP_BIN="$(find_bin xrdp /usr/sbin/xrdp /usr/local/sbin/xrdp)" || {
+  echo "xrdp binary not found after install/build" >&2
+  exit 1
+}
+XRDP_SESMAN_BIN="$(find_bin xrdp-sesman /usr/sbin/xrdp-sesman /usr/local/sbin/xrdp-sesman)" || {
+  echo "xrdp-sesman binary not found after install/build" >&2
+  exit 1
+}
+VNC_BIN="$(
+  find_bin x11vnc /usr/bin/x11vnc /usr/local/bin/x11vnc ||
+  find_bin x0vncserver /usr/bin/x0vncserver /usr/local/bin/x0vncserver ||
+  find_bin Xvnc /usr/bin/Xvnc /usr/local/bin/Xvnc
+)" || {
+  echo "No supported VNC backend found (x11vnc, x0vncserver, or Xvnc)" >&2
+  exit 1
+}
+
+echo "Verified display prereqs:"
+echo "  xrdp: $XRDP_BIN"
+echo "  xrdp-sesman: $XRDP_SESMAN_BIN"
+echo "  vnc backend: $VNC_BIN"
+`;
+
+  if (experience === "cli") {
+    await all({
+      async npmGlobals() {
+        return runStep(
+          "pm2 + Claude Code + OpenCode + Bun",
+          [
+            // pm2 is required for runtime orchestration
+            "npm install -g pm2",
+            // Optional tooling: don't fail snapshot build if these are unavailable
+            "npm install -g @anthropic-ai/claude-code || true",
+            "npm install -g opencode-ai || true",
+            "curl -fsSL https://bun.sh/install | bash || true",
+          ].join(" && "),
+        );
+      },
+      async serviceFiles() {
+        await this.$.npmGlobals;
+        await sandbox.runCommand({
+          cmd: "bash",
+          args: [
+            "-c",
+            `sudo mkdir -p ${SERVICE_DIR} && sudo chown $(whoami) ${SERVICE_DIR}`,
+          ],
+        });
+        await sandbox.writeFiles([
+          {
+            path: `${SERVICE_DIR}/service.js`,
+            content: Buffer.from(getServiceCode()),
+          },
+          {
+            path: `${SERVICE_DIR}/package.json`,
+            content: Buffer.from('{"name":"vdesk-services","private":true}'),
+          },
+          {
+            path: `${SERVICE_DIR}/ecosystem.config.js`,
+            content: Buffer.from(getEcosystemConfig()),
+          },
+          {
+            path: `${SERVICE_DIR}/display-start.sh`,
+            content: Buffer.from(getDisplayStartScript()),
+          },
+          {
+            path: `${SERVICE_DIR}/cli-display-start.sh`,
+            content: Buffer.from(getCliDisplayStartScript()),
+          },
+          {
+            path: `${SERVICE_DIR}/sandbox-bridge.py`,
+            content: Buffer.from(getSandboxBridgeScript()),
+          },
+        ]);
+        await Promise.all([
+          sandbox.runCommand({
+            cmd: "npm",
+            args: ["install", "ws"],
+            cwd: SERVICE_DIR,
+          }),
+          sandbox.runCommand({
+            cmd: "chmod",
+            args: [
+              "+x",
+              `${SERVICE_DIR}/display-start.sh`,
+              `${SERVICE_DIR}/cli-display-start.sh`,
+              `${SERVICE_DIR}/sandbox-bridge.py`,
+            ],
+          }),
+        ]);
+      },
+      async xdgDesktop() {
+        await sandbox.writeFiles([
+          {
+            path: `${HOME}/WELCOME.md`,
+            content: Buffer.from(
+              [
+                "# Welcome to vdesk (CLI)",
+                "",
+                "This workspace is configured as CLI-only.",
+                "Use the Terminal app to work inside the VM.",
+                "",
+              ].join("\n"),
+            ),
+          },
+        ]);
+      },
+    });
+  } else {
+    await all({
     // Download Xpra RPMs (fast, ~10s — kicks off immediately)
     async xpraDownload() {
       return runStep(
@@ -298,8 +472,8 @@ fi
         "SPAL repo + system tools + X11/GTK4 deps + desktop apps",
         [
           "sudo dnf install -y spal-release",
-          "sudo dnf install -y vim-enhanced htop wget jq tree tmux ripgrep cpio" +
-            " xorg-x11-server-Xvfb xorg-x11-server-Xorg xorg-x11-drv-dummy mesa-dri-drivers dbus-x11 xdg-utils xorg-x11-fonts-misc xorg-x11-fonts-Type1 xorg-x11-fonts-100dpi xeyes" +
+            "sudo dnf install -y vim-enhanced htop wget jq tree tmux ripgrep cpio" +
+            " xorg-x11-server-Xvfb xorg-x11-server-Xorg xorg-x11-drv-dummy mesa-dri-drivers dbus-x11 xdg-utils git python3-pip xterm xorg-x11-fonts-misc xorg-x11-fonts-Type1 xorg-x11-fonts-100dpi xeyes" +
             " mesa-libEGL mesa-libGLES mesa-libgbm libglvnd-egl libglvnd-gles" +
             " gstreamer1 gstreamer1-plugins-base gstreamer1-plugins-good" +
             " firefox nautilus gnome-calculator gnome-text-editor gimp" +
@@ -309,6 +483,14 @@ fi
             " google-noto-sans-fonts google-noto-emoji-fonts dejavu-fonts-all adwaita-icon-theme",
           "sudo ln -sf /usr/bin/vim /usr/local/bin/vi",
         ].join(" && "),
+      );
+    },
+
+    async displayPrereqs() {
+      await this.$.dnfPackages;
+      return runStep(
+        "Display stack prerequisites (noVNC/VNC/Kasm fallback/RDP)",
+        displayDepsScript,
       );
     },
 
@@ -384,8 +566,10 @@ fi
       return runStep(
         "pm2 + Claude Code + OpenCode + Bun",
         [
-          "npm install -g pm2 @anthropic-ai/claude-code opencode-ai",
-          "curl -fsSL https://bun.sh/install | bash",
+          "npm install -g pm2",
+          "npm install -g @anthropic-ai/claude-code || true",
+          "npm install -g opencode-ai || true",
+          "curl -fsSL https://bun.sh/install | bash || true",
         ].join(" && "),
       );
     },
@@ -408,15 +592,43 @@ fi
         },
         {
           path: `${SERVICE_DIR}/package.json`,
-          content: Buffer.from('{"name":"sandcastle-services","private":true}'),
+          content: Buffer.from('{"name":"vdesk-services","private":true}'),
         },
         {
           path: `${SERVICE_DIR}/ecosystem.config.js`,
           content: Buffer.from(getEcosystemConfig()),
         },
         {
+          path: `${SERVICE_DIR}/display-start.sh`,
+          content: Buffer.from(getDisplayStartScript()),
+        },
+        {
+          path: `${SERVICE_DIR}/cli-display-start.sh`,
+          content: Buffer.from(getCliDisplayStartScript()),
+        },
+        {
           path: `${SERVICE_DIR}/xpra-start.sh`,
           content: Buffer.from(getXpraStartScript()),
+        },
+        {
+          path: `${SERVICE_DIR}/novnc-start.sh`,
+          content: Buffer.from(getNoVncStartScript()),
+        },
+        {
+          path: `${SERVICE_DIR}/vnc-start.sh`,
+          content: Buffer.from(getVncStartScript()),
+        },
+        {
+          path: `${SERVICE_DIR}/kasmvnc-start.sh`,
+          content: Buffer.from(getKasmVncStartScript()),
+        },
+        {
+          path: `${SERVICE_DIR}/rdp-start.sh`,
+          content: Buffer.from(getRdpStartScript()),
+        },
+        {
+          path: `${SERVICE_DIR}/webrtc-start.sh`,
+          content: Buffer.from(getWebRtcStartScript()),
         },
         {
           path: `${SERVICE_DIR}/sandbox-bridge.py`,
@@ -431,7 +643,17 @@ fi
         }),
         sandbox.runCommand({
           cmd: "chmod",
-          args: ["+x", `${SERVICE_DIR}/xpra-start.sh`],
+          args: [
+            "+x",
+            `${SERVICE_DIR}/display-start.sh`,
+            `${SERVICE_DIR}/cli-display-start.sh`,
+            `${SERVICE_DIR}/xpra-start.sh`,
+            `${SERVICE_DIR}/novnc-start.sh`,
+            `${SERVICE_DIR}/vnc-start.sh`,
+            `${SERVICE_DIR}/kasmvnc-start.sh`,
+            `${SERVICE_DIR}/rdp-start.sh`,
+            `${SERVICE_DIR}/webrtc-start.sh`,
+          ],
         }),
         sandbox.runCommand({
           cmd: "chmod",
@@ -450,7 +672,7 @@ fi
           path: `${HOME}/WELCOME.md`,
           content: Buffer.from(
             [
-              "# Welcome to Sandcastle",
+              "# Welcome to vdesk",
               "",
               "You're running a full Linux desktop in the cloud, streamed to your browser.",
               "",
@@ -640,11 +862,12 @@ fi
         console.error(`[${prefix}] Custom install script failed:`, stderr);
       }
     },
-  });
+    });
+  }
 
   console.log(`[${prefix}] All setup steps completed, creating snapshot...`);
   const snapshot = await sandbox.snapshot();
-  await setGoldenSnapshotId(snapshot.snapshotId);
+  await setGoldenSnapshotId(snapshot.snapshotId, experience);
 
   console.log(
     `[${prefix}] Created new golden snapshot: ${snapshot.snapshotId}`,

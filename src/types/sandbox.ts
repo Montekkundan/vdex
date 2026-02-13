@@ -2,7 +2,7 @@ export interface SandboxInfo {
   sandboxId: string;
   status: string;
   domains: {
-    xpra: string;
+    display: string;
     services: string; // HTTP file/process API + WS PTY at /ws/terminal
     codeServer: string;
     preview: string;

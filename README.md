@@ -25,6 +25,21 @@ Core idea: this is a per-user interface on top of that user's Vercel Sandbox res
 - `@vercel/sandbox` for sandbox create/get/stop/snapshot/extend
 - Xpra + sandbox services running inside each sandbox
 
+### Port Structure
+
+Each sandbox exposes 4 fixed ports:
+
+- `14080`: selected display transport (Xpra/RDP/VNC/noVNC/KasmVNC/WebRTC via unified display domain)
+- `14081`: services/control API (files, processes, terminal relay, bridge APIs)
+- `14082`: code-server
+- `14083`: preview (user app/dev server previews)
+
+Display abstraction:
+
+- The app now treats `14080` as a generic `display` endpoint.
+- Workspace `displayClient` selects the display mode.
+- In the current compatibility implementation, all display modes route through the same display gateway endpoint on `14080`.
+
 ## Important Operational Notes
 
 - A workspace row can exist even if the underlying sandbox died; APIs reconcile and mark it stopped.
@@ -33,6 +48,26 @@ Core idea: this is a per-user interface on top of that user's Vercel Sandbox res
   - `WARM_POOL_TARGET`
   - `WARM_POOL_AUTO_REPLENISH`
 - On local development (`localhost`), service calls are routed through same-origin API proxy paths to avoid CORS issues.
+
+## Provisioning Logic
+
+Display-client-aware sandbox provisioning:
+
+- `xpra`
+  - May claim a warm-pool sandbox ID.
+  - Warm-pool claim is only used for the default profile (`balanced_4c8g`) with no explicit snapshot override.
+  - Otherwise provisions a fresh sandbox.
+- `novnc`, `vnc`, `kasmvnc`, `rdp`, `webrtc`
+  - Always provision a fresh sandbox (no warm-pool claim path).
+
+Snapshot selection:
+
+- New VM create
+  - Uses explicit `snapshotId` if provided.
+  - Otherwise uses the current golden snapshot.
+- Restart/reconnect
+  - Uses the workspace snapshot first (`workspace.snapshotId`).
+  - Falls back to the current golden snapshot when needed.
 
 ## Setup
 

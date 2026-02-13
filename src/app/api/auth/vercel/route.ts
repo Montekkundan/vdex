@@ -4,8 +4,7 @@ import { cookies } from "next/headers";
 
 function getBaseUrl(): string {
   if (process.env.BETTER_AUTH_URL) return process.env.BETTER_AUTH_URL;
-  if (process.env.VERCEL_URL)
-    return "https://sandcastle-os.vercel.app";
+  if (process.env.VERCEL_URL) return "https://vdesk.cloud";
   return "http://localhost:3000";
 }
 

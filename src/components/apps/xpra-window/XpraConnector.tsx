@@ -3,11 +3,14 @@
 import { useEffect, useRef } from "react";
 import { useXpraStore } from "@/stores/xpra-store";
 import { useWindowStore } from "@/stores/window-store";
-import { useActiveSandbox } from "@/stores/workspace-store";
+import { useActiveSandbox, useWorkspaceStore } from "@/stores/workspace-store";
 import { isLiveSandboxStatus } from "@/lib/sandbox/status";
 
 export function XpraConnector() {
   const { activeWorkspaceId, sandbox } = useActiveSandbox();
+  const activeWorkspaceDisplayClient = useWorkspaceStore((s) =>
+    s.workspaces.find((w) => w.id === s.activeWorkspaceId)?.displayClient ?? "xpra",
+  );
   const xpraConnect = useXpraStore((s) => s.connect);
   const xpraDisconnect = useXpraStore((s) => s.disconnect);
   const xpraConnected = useXpraStore((s) => s.connected);
@@ -25,10 +28,11 @@ export function XpraConnector() {
 
   // Connect to Xpra when sandbox is active
   useEffect(() => {
-    if (!sandbox?.domains.xpra || !activeWorkspaceId) return;
+    if (activeWorkspaceDisplayClient !== "xpra") return;
+    if (!sandbox?.domains.display || !activeWorkspaceId) return;
     if (!isLiveSandboxStatus(sandbox.status)) return;
 
-    const xpraDomain = sandbox.domains.xpra;
+    const xpraDomain = sandbox.domains.display;
     if (connectedSandboxRef.current === xpraDomain) return;
 
     connectedSandboxRef.current = xpraDomain;
@@ -40,7 +44,14 @@ export function XpraConnector() {
       tracked.clear();
       xpraDisconnect();
     };
-  }, [sandbox?.domains.xpra, activeWorkspaceId, xpraConnect, xpraDisconnect]);
+  }, [
+    activeWorkspaceDisplayClient,
+    sandbox?.domains.display,
+    sandbox?.status,
+    activeWorkspaceId,
+    xpraConnect,
+    xpraDisconnect,
+  ]);
 
   // Forward global mouse position to Xpra root window (for apps like xeyes)
   useEffect(() => {
@@ -54,7 +65,7 @@ export function XpraConnector() {
     return () => window.removeEventListener("mousemove", handleMouseMove);
   }, [xpraConnected, sendGlobalPointerPosition]);
 
-  // Sync Xpra windows -> Sandcastle windows (new/removed X11 windows)
+  // Sync Xpra windows -> vdesk windows (new/removed X11 windows)
   useEffect(() => {
     if (!xpraConnected) return;
 
@@ -76,7 +87,7 @@ export function XpraConnector() {
       }
     });
 
-    // Xpra closed a window -> close the Sandcastle window
+    // Xpra closed a window -> close the vdesk window
     trackedWidsRef.current.forEach((wid) => {
       if (!currentWids.has(wid)) {
         trackedWidsRef.current.delete(wid);
@@ -88,7 +99,7 @@ export function XpraConnector() {
     });
   }, [xpraConnected, xpraWindows, openWindow, closeWindow]);
 
-  // Sync Xpra window changes -> Sandcastle windows (title + size)
+  // Sync Xpra window changes -> vdesk windows (title + size)
   useEffect(() => {
     if (!xpraConnected) return;
 
@@ -106,7 +117,7 @@ export function XpraConnector() {
           setWindowTitle(match.id, win.title);
         }
 
-        // Xpra app resized itself -> update sandcastle window to match
+        // Xpra app resized itself -> update vdesk window to match
         if (prev.width !== win.width || prev.height !== win.height) {
           resizeWindow(match.id, {
             width: Math.max(100, win.width),
@@ -119,7 +130,7 @@ export function XpraConnector() {
     return unsubscribe;
   }, [xpraConnected, setWindowTitle, resizeWindow]);
 
-  // Reverse sync: Sandcastle window closed -> kill the X11 app via Xpra
+  // Reverse sync: vdesk window closed -> kill the X11 app via Xpra
   useEffect(() => {
     if (!xpraConnected) return;
 

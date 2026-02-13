@@ -2,7 +2,8 @@
 // Use high ports to avoid conflicts.
 // Max 4 ports per sandbox.
 export const PORTS = {
-  XPRA: 14080,
+  // Generic display transport slot. Backed by the selected display client.
+  DISPLAY: 14080,
   // HTTP file/process API + WS PTY (at /ws/terminal)
   SERVICES: 14081,
   CODE_SERVER: 14082,
@@ -10,7 +11,7 @@ export const PORTS = {
 } as const;
 
 export const SANDBOX_PORTS = [
-  PORTS.XPRA,
+  PORTS.DISPLAY,
   PORTS.SERVICES,
   PORTS.CODE_SERVER,
   PORTS.PREVIEW,

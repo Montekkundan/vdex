@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { mutateWorkspaces, useWorkspaces } from "@/lib/hooks/use-swr-hooks";
+import { DISPLAY_CLIENTS, EXPERIENCES, PROVIDERS, SIZE_PROFILES } from "@/lib/runtime/profiles";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 import { slugify } from "@/lib/workspace-slug";
 import { Button } from "@/components/ui/button";
@@ -10,6 +11,15 @@ import { Spinner } from "@/components/ui/spinner";
 import { WorkspaceIcon } from "@/components/workspace-icon";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   AlertDialog,
@@ -21,6 +31,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  type DisplayClient,
+  type ProviderId,
+  type SizeProfileId,
+  type WorkspaceExperience,
+  WORKSPACE_ICON_NAMES,
+} from "@/types/workspace";
 
 const STATUS_STYLE: Record<string, string> = {
   active: "bg-green-100 text-green-900 border border-green-300",
@@ -40,6 +57,13 @@ export function DesktopHub() {
   const creatingStatus = useWorkspaceStore((s) => s.creatingStatus);
   const [actionId, setActionId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [newWorkspaceName, setNewWorkspaceName] = useState("");
+  const [newWorkspaceIcon, setNewWorkspaceIcon] = useState("terminal");
+  const [newWorkspaceProvider, setNewWorkspaceProvider] = useState<ProviderId>("vercel");
+  const [newWorkspaceExperience, setNewWorkspaceExperience] = useState<WorkspaceExperience>("gui");
+  const [newWorkspaceDisplayClient, setNewWorkspaceDisplayClient] = useState<DisplayClient>("xpra");
+  const [newWorkspaceSizeProfile, setNewWorkspaceSizeProfile] = useState<SizeProfileId>("balanced_4c8g");
   const [shutdownWorkspace, setShutdownWorkspace] = useState<{ id: string; name: string } | null>(null);
   const [shutdownWithSnapshot, setShutdownWithSnapshot] = useState(false);
   const [shutdownWithoutSnapshot, setShutdownWithoutSnapshot] = useState(false);
@@ -89,10 +113,28 @@ export function DesktopHub() {
     );
   }, [workspaces]);
 
+  function resetCreateDialog() {
+    setNewWorkspaceName("");
+    setNewWorkspaceIcon("terminal");
+    setNewWorkspaceProvider("vercel");
+    setNewWorkspaceExperience("gui");
+    setNewWorkspaceDisplayClient("xpra");
+    setNewWorkspaceSizeProfile("balanced_4c8g");
+  }
+
   async function handleCreate() {
     setActionId("create");
     try {
-      const ws = await createWorkspace();
+      const ws = await createWorkspace({
+        name: newWorkspaceName.trim() || undefined,
+        icon: newWorkspaceIcon,
+        provider: newWorkspaceProvider,
+        experience: newWorkspaceExperience,
+        displayClient: newWorkspaceExperience === "gui" ? newWorkspaceDisplayClient : "none",
+        sizeProfile: newWorkspaceSizeProfile,
+      });
+      setCreateDialogOpen(false);
+      resetCreateDialog();
       router.push(`/desktop/${encodeURIComponent(slugify(ws.name))}`);
     } finally {
       setActionId(null);
@@ -124,7 +166,7 @@ export function DesktopHub() {
 
       // Wait for display stack to be ready before navigating.
       const timeoutAt = Date.now() + 30_000;
-      let ready = Boolean(body?.xpraReady && body?.servicesReady);
+      let ready = Boolean(body?.displayReady && body?.servicesReady);
       while (!ready && Date.now() < timeoutAt) {
         await new Promise((resolve) => setTimeout(resolve, 1000));
         const check = await fetch(`/api/sandbox/${id}`).catch(() => null);
@@ -135,7 +177,7 @@ export function DesktopHub() {
           setActionError("VM expired while starting. Try again.");
           return;
         }
-        ready = Boolean(next?.xpraReady && next?.servicesReady);
+        ready = Boolean(next?.displayReady && next?.servicesReady);
       }
 
       if (!ready) {
@@ -196,10 +238,10 @@ export function DesktopHub() {
             </p>
           </div>
           <Button
-            onClick={handleCreate}
+            onClick={() => setCreateDialogOpen(true)}
             disabled={!!creatingStatus || actionId === "create"}
           >
-            {actionId === "create" ? <Spinner className="size-3.5" /> : "New VM"}
+            New VM
           </Button>
         </div>
 
@@ -215,7 +257,7 @@ export function DesktopHub() {
             {sorted.length === 0 ? (
               <div className="p-8 text-center">
                 <p className="text-copy-14 text-gray-900">No workspaces yet.</p>
-                <Button className="mt-4" onClick={handleCreate}>
+                <Button className="mt-4" onClick={() => setCreateDialogOpen(true)}>
                   Create first VM
                 </Button>
               </div>
@@ -314,6 +356,176 @@ export function DesktopHub() {
         </Card>
       </div>
 
+      <Dialog
+        open={createDialogOpen}
+        onOpenChange={(open) => {
+          setCreateDialogOpen(open);
+          if (!open) resetCreateDialog();
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create VM</DialogTitle>
+            <DialogDescription>
+              Configure provider, display client, and size profile.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <label className="text-copy-12 text-gray-800">Name (optional)</label>
+              <Input
+                value={newWorkspaceName}
+                onChange={(e) => setNewWorkspaceName(e.target.value)}
+                placeholder="auto-generated"
+                maxLength={64}
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-copy-12 text-gray-800">Icon</label>
+              <Select
+                value={newWorkspaceIcon}
+                onValueChange={(value) => setNewWorkspaceIcon(value)}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select icon" />
+                </SelectTrigger>
+                <SelectContent>
+                  {WORKSPACE_ICON_NAMES.map((icon) => (
+                    <SelectItem key={icon} value={icon}>
+                      {icon}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-copy-12 text-gray-800">Provider</label>
+              <Select
+                value={newWorkspaceProvider}
+                onValueChange={(value) => setNewWorkspaceProvider(value as ProviderId)}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select provider" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.values(PROVIDERS).map((provider) => (
+                    <SelectItem
+                      key={provider.id}
+                      value={provider.id}
+                      disabled={!provider.enabled}
+                    >
+                      {provider.label}
+                      {!provider.enabled && provider.reason
+                        ? ` (Unavailable: ${provider.reason})`
+                        : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-copy-12 text-gray-800">Experience</label>
+              <Select
+                value={newWorkspaceExperience}
+                onValueChange={(value) =>
+                  setNewWorkspaceExperience(value as WorkspaceExperience)
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select experience" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.values(EXPERIENCES).map((experience) => (
+                    <SelectItem
+                      key={experience.id}
+                      value={experience.id}
+                      disabled={!experience.enabled}
+                    >
+                      {experience.label}
+                      {!experience.enabled && experience.reason
+                        ? ` (Unavailable: ${experience.reason})`
+                        : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-copy-12 text-gray-800">Display client</label>
+              <Select
+                value={newWorkspaceDisplayClient}
+                onValueChange={(value) =>
+                  setNewWorkspaceDisplayClient(value as DisplayClient)
+                }
+                disabled={newWorkspaceExperience !== "gui"}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select display client" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.values(DISPLAY_CLIENTS)
+                    .filter((client) => client.id !== "none")
+                    .map((client) => (
+                    <SelectItem
+                      key={client.id}
+                      value={client.id}
+                      disabled={!client.enabled}
+                    >
+                      {client.label}
+                      {!client.enabled && client.reason
+                        ? ` (Unavailable: ${client.reason})`
+                        : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-copy-12 text-gray-800">Size profile</label>
+              <Select
+                value={newWorkspaceSizeProfile}
+                onValueChange={(value) =>
+                  setNewWorkspaceSizeProfile(value as SizeProfileId)
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select size profile" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.values(SIZE_PROFILES).map((profile) => (
+                    <SelectItem key={profile.id} value={profile.id}>
+                      {profile.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setCreateDialogOpen(false)}
+              disabled={actionId === "create"}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreate}
+              disabled={!!creatingStatus || actionId === "create"}
+            >
+              {actionId === "create" ? <Spinner className="size-3.5" /> : "Create VM"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <AlertDialog
         open={!!shutdownWorkspace}
         onOpenChange={(open) => {
@@ -375,7 +587,7 @@ export function DesktopHub() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete workspace</AlertDialogTitle>
             <AlertDialogDescription>
-              Delete "{deleteWorkspaceTarget?.name}" permanently? This removes
+              Delete &quot;{deleteWorkspaceTarget?.name}&quot; permanently? This removes
               the workspace from your account and stops its sandbox if running.
             </AlertDialogDescription>
           </AlertDialogHeader>

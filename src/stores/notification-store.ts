@@ -59,7 +59,7 @@ interface NotificationStore {
 const MAX_VISIBLE = 5;
 const MAX_HISTORY = 50;
 
-const PREFS_KEY = "sandcastle_notification_prefs";
+const PREFS_KEY = "vdesk_notification_prefs";
 
 function loadPrefs(): {
   doNotDisturb: boolean;

@@ -5,12 +5,28 @@ export type WorkspaceStatus =
   | "creating"
   | "error";
 
+export type ProviderId = "vercel" | "azure" | "gcp";
+export type WorkspaceExperience = "gui" | "cli";
+export type DisplayClient =
+  | "none"
+  | "xpra"
+  | "rdp"
+  | "vnc"
+  | "novnc"
+  | "kasmvnc"
+  | "webrtc";
+export type SizeProfileId = "small_2c4g" | "balanced_4c8g" | "max_8c16g";
+
 export interface Workspace {
   id: string;
   name: string;
   icon: string;
   sandboxId: string | null;
   snapshotId: string | null;
+  provider: ProviderId;
+  experience: WorkspaceExperience;
+  displayClient: DisplayClient;
+  sizeProfile: SizeProfileId;
   status: WorkspaceStatus;
   sandboxDomain: string | null;
   background: string | null;

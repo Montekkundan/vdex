@@ -121,7 +121,7 @@ interface WorkspaceResponse {
   workspace: Workspace;
   sandbox: SandboxInfo | null;
   servicesReady?: boolean;
-  xpraReady?: boolean;
+  displayReady?: boolean;
   sandboxLost?: boolean;
   canRecover?: boolean;
 }
@@ -136,7 +136,7 @@ export function useWorkspace(id: string | null) {
     workspace: data?.workspace ?? null,
     sandbox: data?.sandbox ?? null,
     servicesReady: data?.servicesReady ?? false,
-    xpraReady: data?.xpraReady ?? false,
+    displayReady: data?.displayReady ?? false,
     sandboxLost: data?.sandboxLost ?? false,
     canRecover: data?.canRecover ?? false,
     isLoading,

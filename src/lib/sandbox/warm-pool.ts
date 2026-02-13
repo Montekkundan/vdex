@@ -92,7 +92,7 @@ export async function replenishPool(): Promise<{
     return { created: 0, target: WARM_POOL_TARGET, existing: 0 };
   }
 
-  const snapshotId = await getGoldenSnapshotId();
+  const snapshotId = await getGoldenSnapshotId("gui");
   if (!snapshotId) {
     return { created: 0, target: WARM_POOL_TARGET, existing: 0 };
   }
@@ -173,7 +173,7 @@ export async function prunePool(): Promise<number> {
  * are removed (zero-downtime rotation).
  */
 export async function expireOldSnapshotVMs(): Promise<number> {
-  const snapshotId = await getGoldenSnapshotId();
+  const snapshotId = await getGoldenSnapshotId("gui");
   if (!snapshotId) return 0;
 
   const expired = await db

@@ -2,7 +2,7 @@ import { getSession } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
 
 export const metadata = {
-  title: "Admin - Sandcastle",
+  title: "Admin - vdesk",
 };
 
 export default async function AdminLayout({
@@ -22,7 +22,7 @@ export default async function AdminLayout({
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-6">
           <div className="flex items-center gap-3">
             <h1 className="text-label-16 font-semibold text-gray-1000">
-              Sandcastle Admin
+              vdesk Admin
             </h1>
           </div>
           <div className="flex items-center gap-3 text-copy-13 text-gray-900">
