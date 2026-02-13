@@ -1,8 +1,10 @@
 import {
   DISPLAY_CLIENTS,
+  EXPERIENCES,
   isValidDisplayClient,
   isValidProviderId,
   isValidSizeProfileId,
+  isValidWorkspaceExperience,
   PROVIDERS,
   SIZE_PROFILES,
 } from "@/lib/runtime/profiles";
@@ -10,14 +12,17 @@ import type {
   DisplayClient,
   ProviderId,
   SizeProfileId,
+  WorkspaceExperience,
 } from "@/types/workspace";
 
 export type CreateValidationErrorCode =
   | "UNSUPPORTED_PROVIDER"
   | "UNSUPPORTED_DISPLAY_CLIENT"
+  | "UNSUPPORTED_EXPERIENCE"
   | "UNSUPPORTED_SIZE_PROFILE"
   | "PROVIDER_NOT_IMPLEMENTED"
-  | "DISPLAY_CLIENT_NOT_IMPLEMENTED";
+  | "DISPLAY_CLIENT_NOT_IMPLEMENTED"
+  | "EXPERIENCE_NOT_IMPLEMENTED";
 
 export type ValidationResult<T> =
   | { ok: true; value: T }
@@ -68,6 +73,33 @@ export function validateDisplayClient(
       error: {
         code: "DISPLAY_CLIENT_NOT_IMPLEMENTED",
         message: `Display client '${input}' is not available yet.`,
+      },
+    };
+  }
+
+  return { ok: true, value: input };
+}
+
+export function validateWorkspaceExperience(
+  input: unknown,
+): ValidationResult<WorkspaceExperience> {
+  if (!isValidWorkspaceExperience(input)) {
+    return {
+      ok: false,
+      error: {
+        code: "UNSUPPORTED_EXPERIENCE",
+        message: `Workspace experience '${String(input)}' is not supported.`,
+      },
+    };
+  }
+
+  const experience = EXPERIENCES[input];
+  if (!experience.enabled) {
+    return {
+      ok: false,
+      error: {
+        code: "EXPERIENCE_NOT_IMPLEMENTED",
+        message: `Workspace experience '${input}' is not available yet.`,
       },
     };
   }

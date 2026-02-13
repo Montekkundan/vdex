@@ -62,15 +62,18 @@ export async function GET(
   let servicesReady = false;
   let displayReady = false;
   if (sandbox) {
+    const isCliWorkspace = workspace.experience === "cli";
     const displayClient = isValidDisplayClient(workspace.displayClient)
       ? workspace.displayClient
       : "xpra";
     servicesReady = await isHttpEndpointReady(
       `https://${sandbox.domains.services}/health`,
     );
-    displayReady = await isHttpEndpointReady(
-      `https://${sandbox.domains.display}${getDisplayHealthPath(displayClient)}`,
-    );
+    displayReady = isCliWorkspace
+      ? true
+      : await isHttpEndpointReady(
+          `https://${sandbox.domains.display}${getDisplayHealthPath(displayClient)}`,
+        );
   }
 
   return NextResponse.json({

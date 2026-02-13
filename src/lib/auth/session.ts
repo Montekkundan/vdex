@@ -4,7 +4,7 @@ import { users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import crypto from "crypto";
 
-const SESSION_COOKIE = "sandcastle_session";
+const SESSION_COOKIE = "vdesk_session";
 const SESSION_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
 
 function getSecret(): string {

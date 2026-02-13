@@ -4,6 +4,7 @@ export function getDisplayHealthPath(client: DisplayClient): string {
   switch (client) {
     case "novnc":
     case "vnc":
+    case "rdp":
       return "/vnc.html";
     case "kasmvnc":
     case "rdp":
@@ -31,8 +32,14 @@ export function getDisplayIframeUrl(
     }
     case "kasmvnc":
       return `${base}/`;
-    case "rdp":
-      return `${base}/`;
+    case "rdp": {
+      const params = new URLSearchParams({
+        autoconnect: "1",
+        resize: "remote",
+        path: "websockify",
+      });
+      return `${base}/vnc.html?${params.toString()}`;
+    }
     case "webrtc":
       return `${base}/`;
   }

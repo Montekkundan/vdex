@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { mutateWorkspaces, useWorkspaces } from "@/lib/hooks/use-swr-hooks";
-import { DISPLAY_CLIENTS, PROVIDERS, SIZE_PROFILES } from "@/lib/runtime/profiles";
+import { DISPLAY_CLIENTS, EXPERIENCES, PROVIDERS, SIZE_PROFILES } from "@/lib/runtime/profiles";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 import { slugify } from "@/lib/workspace-slug";
 import { Button } from "@/components/ui/button";
@@ -35,6 +35,7 @@ import {
   type DisplayClient,
   type ProviderId,
   type SizeProfileId,
+  type WorkspaceExperience,
   WORKSPACE_ICON_NAMES,
 } from "@/types/workspace";
 
@@ -60,6 +61,7 @@ export function DesktopHub() {
   const [newWorkspaceName, setNewWorkspaceName] = useState("");
   const [newWorkspaceIcon, setNewWorkspaceIcon] = useState("terminal");
   const [newWorkspaceProvider, setNewWorkspaceProvider] = useState<ProviderId>("vercel");
+  const [newWorkspaceExperience, setNewWorkspaceExperience] = useState<WorkspaceExperience>("gui");
   const [newWorkspaceDisplayClient, setNewWorkspaceDisplayClient] = useState<DisplayClient>("xpra");
   const [newWorkspaceSizeProfile, setNewWorkspaceSizeProfile] = useState<SizeProfileId>("balanced_4c8g");
   const [shutdownWorkspace, setShutdownWorkspace] = useState<{ id: string; name: string } | null>(null);
@@ -115,6 +117,7 @@ export function DesktopHub() {
     setNewWorkspaceName("");
     setNewWorkspaceIcon("terminal");
     setNewWorkspaceProvider("vercel");
+    setNewWorkspaceExperience("gui");
     setNewWorkspaceDisplayClient("xpra");
     setNewWorkspaceSizeProfile("balanced_4c8g");
   }
@@ -126,7 +129,8 @@ export function DesktopHub() {
         name: newWorkspaceName.trim() || undefined,
         icon: newWorkspaceIcon,
         provider: newWorkspaceProvider,
-        displayClient: newWorkspaceDisplayClient,
+        experience: newWorkspaceExperience,
+        displayClient: newWorkspaceExperience === "gui" ? newWorkspaceDisplayClient : "xpra",
         sizeProfile: newWorkspaceSizeProfile,
       });
       setCreateDialogOpen(false);
@@ -424,12 +428,41 @@ export function DesktopHub() {
             </div>
 
             <div className="space-y-1">
+              <label className="text-copy-12 text-gray-800">Experience</label>
+              <Select
+                value={newWorkspaceExperience}
+                onValueChange={(value) =>
+                  setNewWorkspaceExperience(value as WorkspaceExperience)
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select experience" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.values(EXPERIENCES).map((experience) => (
+                    <SelectItem
+                      key={experience.id}
+                      value={experience.id}
+                      disabled={!experience.enabled}
+                    >
+                      {experience.label}
+                      {!experience.enabled && experience.reason
+                        ? ` (Unavailable: ${experience.reason})`
+                        : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
               <label className="text-copy-12 text-gray-800">Display client</label>
               <Select
                 value={newWorkspaceDisplayClient}
                 onValueChange={(value) =>
                   setNewWorkspaceDisplayClient(value as DisplayClient)
                 }
+                disabled={newWorkspaceExperience !== "gui"}
               >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select display client" />

@@ -1,9 +1,10 @@
 import { Sandbox } from "@vercel/sandbox";
 import type { SandboxInfo } from "@/types/sandbox";
-import type { DisplayClient } from "@/types/workspace";
+import type { DisplayClient, WorkspaceExperience } from "@/types/workspace";
 import { SANDBOX_PORTS, PORTS } from "./ports";
 import { getServiceCode } from "./sandbox-services";
 import {
+  getCliDisplayStartScript,
   getDisplayStartScript,
   getEcosystemConfig,
   getKasmVncStartScript,
@@ -58,9 +59,13 @@ async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Respons
 async function waitForSandboxReadiness(
   sandbox: Sandbox,
   displayClient: DisplayClient,
+  experience: WorkspaceExperience,
 ): Promise<void> {
   const servicesUrl = `${sandbox.domain(PORTS.SERVICES)}/health`;
-  const displayUrl = `${sandbox.domain(PORTS.DISPLAY)}${getDisplayHealthPath(displayClient)}`;
+  const displayUrl =
+    experience === "cli"
+      ? `${sandbox.domain(PORTS.DISPLAY)}/`
+      : `${sandbox.domain(PORTS.DISPLAY)}${getDisplayHealthPath(displayClient)}`;
   const deadline = Date.now() + READINESS_TIMEOUT_MS;
 
   while (Date.now() < deadline) {
@@ -97,6 +102,7 @@ export async function createSandbox(
   snapshotId?: string,
   resources?: SandboxResources,
   displayClient: DisplayClient = "xpra",
+  experience: WorkspaceExperience = "gui",
 ): Promise<CreateSandboxResult> {
   let sandbox: Sandbox;
   let usedSnapshot = false;
@@ -144,12 +150,12 @@ export async function createSandbox(
   }
 
   if (usedSnapshot) {
-    await startServices(sandbox, displayClient);
+    await startServices(sandbox, displayClient, experience);
   } else {
-    await bootstrapSandbox(sandbox, displayClient);
+    await bootstrapSandbox(sandbox, displayClient, experience);
   }
 
-  await waitForSandboxReadiness(sandbox, displayClient);
+  await waitForSandboxReadiness(sandbox, displayClient, experience);
 
   return { ...buildSandboxInfo(sandbox), fallback: snapshotId ? !usedSnapshot : undefined };
 }
@@ -157,6 +163,7 @@ export async function createSandbox(
 async function startServices(
   sandbox: Sandbox,
   displayClient: DisplayClient,
+  experience: WorkspaceExperience,
 ): Promise<void> {
   // Ensure DISPLAY and DBUS_SESSION_BUS_ADDRESS are set for all login shells.
   // Also baked into golden snapshot, but written at runtime for fresh sandboxes.
@@ -175,7 +182,10 @@ EOF`,
   // pm2 starts all services from the ecosystem config
   await sandbox.runCommand({
     cmd: "bash",
-    args: ["-c", `DISPLAY_CLIENT=${displayClient} pm2 start ${SERVICE_DIR}/ecosystem.config.js`],
+    args: [
+      "-c",
+      `DISPLAY_CLIENT=${displayClient} WORKSPACE_EXPERIENCE=${experience} pm2 start ${SERVICE_DIR}/ecosystem.config.js`,
+    ],
     detached: true,
   });
 }
@@ -183,6 +193,7 @@ EOF`,
 async function bootstrapSandbox(
   sandbox: Sandbox,
   displayClient: DisplayClient,
+  experience: WorkspaceExperience,
 ): Promise<void> {
   // Fresh VM without golden snapshot -- write everything and install deps
   await sandbox.runCommand({
@@ -191,9 +202,10 @@ async function bootstrapSandbox(
   });
   await sandbox.writeFiles([
     { path: `${SERVICE_DIR}/service.js`, content: Buffer.from(getServiceCode()) },
-    { path: `${SERVICE_DIR}/package.json`, content: Buffer.from('{"name":"sandcastle-services","private":true}') },
+    { path: `${SERVICE_DIR}/package.json`, content: Buffer.from('{"name":"vdesk-services","private":true}') },
     { path: `${SERVICE_DIR}/ecosystem.config.js`, content: Buffer.from(getEcosystemConfig()) },
     { path: `${SERVICE_DIR}/display-start.sh`, content: Buffer.from(getDisplayStartScript()) },
+    { path: `${SERVICE_DIR}/cli-display-start.sh`, content: Buffer.from(getCliDisplayStartScript()) },
     { path: `${SERVICE_DIR}/xpra-start.sh`, content: Buffer.from(getXpraStartScript()) },
     { path: `${SERVICE_DIR}/novnc-start.sh`, content: Buffer.from(getNoVncStartScript()) },
     { path: `${SERVICE_DIR}/vnc-start.sh`, content: Buffer.from(getVncStartScript()) },
@@ -208,11 +220,11 @@ async function bootstrapSandbox(
     cmd: "bash",
     args: [
       "-c",
-      `cd ${SERVICE_DIR} && npm install ws && npm install -g pm2 && chmod +x ${SERVICE_DIR}/display-start.sh ${SERVICE_DIR}/xpra-start.sh ${SERVICE_DIR}/novnc-start.sh ${SERVICE_DIR}/vnc-start.sh ${SERVICE_DIR}/kasmvnc-start.sh ${SERVICE_DIR}/rdp-start.sh ${SERVICE_DIR}/webrtc-start.sh ${SERVICE_DIR}/sandbox-bridge.py`,
+      `cd ${SERVICE_DIR} && npm install ws && npm install -g pm2 && chmod +x ${SERVICE_DIR}/display-start.sh ${SERVICE_DIR}/cli-display-start.sh ${SERVICE_DIR}/xpra-start.sh ${SERVICE_DIR}/novnc-start.sh ${SERVICE_DIR}/vnc-start.sh ${SERVICE_DIR}/kasmvnc-start.sh ${SERVICE_DIR}/rdp-start.sh ${SERVICE_DIR}/webrtc-start.sh ${SERVICE_DIR}/sandbox-bridge.py`,
     ],
   });
 
-  await startServices(sandbox, displayClient);
+  await startServices(sandbox, displayClient, experience);
 }
 
 export async function getSandbox(sandboxId: string): Promise<SandboxInfo> {

@@ -6,6 +6,7 @@ export type WorkspaceStatus =
   | "error";
 
 export type ProviderId = "vercel" | "azure" | "gcp";
+export type WorkspaceExperience = "gui" | "cli";
 export type DisplayClient =
   | "xpra"
   | "rdp"
@@ -22,6 +23,7 @@ export interface Workspace {
   sandboxId: string | null;
   snapshotId: string | null;
   provider: ProviderId;
+  experience: WorkspaceExperience;
   displayClient: DisplayClient;
   sizeProfile: SizeProfileId;
   status: WorkspaceStatus;

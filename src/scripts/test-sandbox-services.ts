@@ -126,7 +126,7 @@ async function main() {
         "-c",
         `sudo mkdir -p /etc/profile.d && sudo tee /etc/profile.d/sandbox-display.sh > /dev/null << 'EOF'
 export DISPLAY=${XPRA_DISPLAY}
-export DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/sandcastle-dbus
+export DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/vdesk-dbus
 export GIO_USE_SYSTEMD=0
 EOF`,
       ],
@@ -138,7 +138,7 @@ EOF`,
     });
 
     // ---- Wait for service health ----
-    console.log("Waiting for sandcastle-svc to become healthy...");
+    console.log("Waiting for vdesk-svc to become healthy...");
     const healthStart = Date.now();
     let healthy = false;
 
@@ -447,10 +447,10 @@ EOF`,
       await new Promise((r) => setTimeout(r, 2000));
       const result = await sandbox.runCommand({
         cmd: "bash",
-        args: ["-c", "test -S /tmp/sandcastle-dbus && echo ok || echo missing"],
+        args: ["-c", "test -S /tmp/vdesk-dbus && echo ok || echo missing"],
       });
       const stdout = (await result.stdout()).trim();
-      expectIncludes(stdout, "ok", "D-Bus session socket at /tmp/sandcastle-dbus");
+      expectIncludes(stdout, "ok", "D-Bus session socket at /tmp/vdesk-dbus");
     });
 
     await assert("dbus-launch is available (dbus-x11 installed)", async () => {
@@ -481,13 +481,13 @@ EOF`,
           cmd: "bash",
           args: [
             "-c",
-            'export DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/sandcastle-dbus && dbus-send --session --dest=org.freedesktop.Notifications --print-reply /org/freedesktop/Notifications org.freedesktop.Notifications.GetServerInformation 2>&1',
+            'export DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/vdesk-dbus && dbus-send --session --dest=org.freedesktop.Notifications --print-reply /org/freedesktop/Notifications org.freedesktop.Notifications.GetServerInformation 2>&1',
           ],
         });
         const stdout = await result.stdout();
         const stderr = await result.stderr();
         lastOutput = (stdout + stderr).trim();
-        if (lastOutput.includes("sandcastle-bridge")) {
+        if (lastOutput.includes("vdesk-bridge")) {
           return;
         }
         await new Promise((r) => setTimeout(r, 1000));
@@ -510,7 +510,7 @@ EOF`,
         cmd: "bash",
         args: [
           "-c",
-          'export DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/sandcastle-dbus && notify-send "Integration Test" "Hello from test suite" 2>&1; echo EXIT:$?',
+          'export DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/vdesk-dbus && notify-send "Integration Test" "Hello from test suite" 2>&1; echo EXIT:$?',
         ],
       });
       const stdout = await result.stdout();

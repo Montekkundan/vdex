@@ -8,7 +8,7 @@
  * Cache entries expire after 30 minutes to avoid stale content.
  */
 
-const CACHE_PREFIX = "sandcastle:terminal:";
+const CACHE_PREFIX = "vdesk:terminal:";
 const MAX_AGE_MS = 30 * 60 * 1000; // 30 minutes
 
 interface CacheEntry {

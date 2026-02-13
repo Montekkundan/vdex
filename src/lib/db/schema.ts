@@ -56,6 +56,7 @@ export const workspaces = pgTable("workspaces", {
   snapshotId: text("snapshot_id"),
   icon: text("icon").default("terminal").notNull(),
   provider: text("provider").default("vercel").notNull(),
+  experience: text("experience").default("gui").notNull(),
   displayClient: text("display_client").default("xpra").notNull(),
   sizeProfile: text("size_profile").default("balanced_4c8g").notNull(),
   status: workspaceStatusEnum("status").default("stopped").notNull(),

@@ -4,6 +4,7 @@ import { setGoldenSnapshotId } from "./golden-snapshot";
 import { SANDBOX_PORTS } from "./ports";
 import { getServiceCode } from "./sandbox-services";
 import {
+  getCliDisplayStartScript,
   getDisplayStartScript,
   getEcosystemConfig,
   getKasmVncStartScript,
@@ -16,6 +17,7 @@ import {
   SERVICE_DIR,
   XPRA_DISPLAY,
 } from "./ecosystem-config";
+import type { WorkspaceExperience } from "@/types/workspace";
 import { getCodeServerFiles } from "./vscode";
 
 const XPRA_LTS = "https://xpra.org/lts/almalinux/9/x86_64";
@@ -37,9 +39,11 @@ export interface GoldenSnapshotResult {
 export async function buildGoldenSnapshot(options?: {
   installScript?: string;
   logPrefix?: string;
+  experience?: WorkspaceExperience;
 }): Promise<GoldenSnapshotResult> {
   const prefix = options?.logPrefix ?? "golden-snapshot";
   const installScript = options?.installScript;
+  const experience = options?.experience ?? "gui";
 
   const sandbox = await Sandbox.create({
     runtime: "node24",
@@ -99,7 +103,7 @@ XPRACSP
 # Disable fake Xinerama -- libfakeXinerama is not available on Amazon Linux 2023
 # and the single-display sandbox doesn't need multi-monitor emulation.
 # Without this, Xpra sets LD_PRELOAD to a nonexistent .so, causing warnings.
-sudo tee /etc/xpra/conf.d/99_sandcastle.conf > /dev/null << 'XPRACONF'
+sudo tee /etc/xpra/conf.d/99_vdesk.conf > /dev/null << 'XPRACONF'
 fake-xinerama=no
 XPRACONF
 
@@ -111,7 +115,7 @@ XWRAPEOF
 
 sudo tee /etc/profile.d/sandbox-display.sh > /dev/null << 'PROFILEEOF'
 export DISPLAY=${XPRA_DISPLAY}
-export DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/sandcastle-dbus
+export DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/vdesk-dbus
 export GIO_USE_SYSTEMD=0
 PROFILEEOF
 
@@ -363,7 +367,88 @@ echo "  xrdp-sesman: $XRDP_SESMAN_BIN"
 echo "  vnc backend: $VNC_BIN"
 `;
 
-  await all({
+  if (experience === "cli") {
+    await all({
+      async npmGlobals() {
+        return runStep(
+          "pm2 + Claude Code + OpenCode + Bun",
+          [
+            "npm install -g pm2 @anthropic-ai/claude-code opencode-ai",
+            "curl -fsSL https://bun.sh/install | bash",
+          ].join(" && "),
+        );
+      },
+      async serviceFiles() {
+        await this.$.npmGlobals;
+        await sandbox.runCommand({
+          cmd: "bash",
+          args: [
+            "-c",
+            `sudo mkdir -p ${SERVICE_DIR} && sudo chown $(whoami) ${SERVICE_DIR}`,
+          ],
+        });
+        await sandbox.writeFiles([
+          {
+            path: `${SERVICE_DIR}/service.js`,
+            content: Buffer.from(getServiceCode()),
+          },
+          {
+            path: `${SERVICE_DIR}/package.json`,
+            content: Buffer.from('{"name":"vdesk-services","private":true}'),
+          },
+          {
+            path: `${SERVICE_DIR}/ecosystem.config.js`,
+            content: Buffer.from(getEcosystemConfig()),
+          },
+          {
+            path: `${SERVICE_DIR}/display-start.sh`,
+            content: Buffer.from(getDisplayStartScript()),
+          },
+          {
+            path: `${SERVICE_DIR}/cli-display-start.sh`,
+            content: Buffer.from(getCliDisplayStartScript()),
+          },
+          {
+            path: `${SERVICE_DIR}/sandbox-bridge.py`,
+            content: Buffer.from(getSandboxBridgeScript()),
+          },
+        ]);
+        await Promise.all([
+          sandbox.runCommand({
+            cmd: "npm",
+            args: ["install", "ws"],
+            cwd: SERVICE_DIR,
+          }),
+          sandbox.runCommand({
+            cmd: "chmod",
+            args: [
+              "+x",
+              `${SERVICE_DIR}/display-start.sh`,
+              `${SERVICE_DIR}/cli-display-start.sh`,
+              `${SERVICE_DIR}/sandbox-bridge.py`,
+            ],
+          }),
+        ]);
+      },
+      async xdgDesktop() {
+        await sandbox.writeFiles([
+          {
+            path: `${HOME}/WELCOME.md`,
+            content: Buffer.from(
+              [
+                "# Welcome to vdesk (CLI)",
+                "",
+                "This workspace is configured as CLI-only.",
+                "Use the Terminal app to work inside the VM.",
+                "",
+              ].join("\n"),
+            ),
+          },
+        ]);
+      },
+    });
+  } else {
+    await all({
     // Download Xpra RPMs (fast, ~10s — kicks off immediately)
     async xpraDownload() {
       return runStep(
@@ -384,7 +469,7 @@ echo "  vnc backend: $VNC_BIN"
         [
           "sudo dnf install -y spal-release",
             "sudo dnf install -y vim-enhanced htop wget jq tree tmux ripgrep cpio" +
-            " xorg-x11-server-Xvfb xorg-x11-server-Xorg xorg-x11-drv-dummy mesa-dri-drivers dbus-x11 xdg-utils git python3-pip xorg-x11-fonts-misc xorg-x11-fonts-Type1 xorg-x11-fonts-100dpi xeyes" +
+            " xorg-x11-server-Xvfb xorg-x11-server-Xorg xorg-x11-drv-dummy mesa-dri-drivers dbus-x11 xdg-utils git python3-pip xterm openbox xorg-x11-fonts-misc xorg-x11-fonts-Type1 xorg-x11-fonts-100dpi xeyes" +
             " mesa-libEGL mesa-libGLES mesa-libgbm libglvnd-egl libglvnd-gles" +
             " gstreamer1 gstreamer1-plugins-base gstreamer1-plugins-good" +
             " firefox nautilus gnome-calculator gnome-text-editor gimp" +
@@ -501,7 +586,7 @@ echo "  vnc backend: $VNC_BIN"
         },
         {
           path: `${SERVICE_DIR}/package.json`,
-          content: Buffer.from('{"name":"sandcastle-services","private":true}'),
+          content: Buffer.from('{"name":"vdesk-services","private":true}'),
         },
         {
           path: `${SERVICE_DIR}/ecosystem.config.js`,
@@ -510,6 +595,10 @@ echo "  vnc backend: $VNC_BIN"
         {
           path: `${SERVICE_DIR}/display-start.sh`,
           content: Buffer.from(getDisplayStartScript()),
+        },
+        {
+          path: `${SERVICE_DIR}/cli-display-start.sh`,
+          content: Buffer.from(getCliDisplayStartScript()),
         },
         {
           path: `${SERVICE_DIR}/xpra-start.sh`,
@@ -551,6 +640,7 @@ echo "  vnc backend: $VNC_BIN"
           args: [
             "+x",
             `${SERVICE_DIR}/display-start.sh`,
+            `${SERVICE_DIR}/cli-display-start.sh`,
             `${SERVICE_DIR}/xpra-start.sh`,
             `${SERVICE_DIR}/novnc-start.sh`,
             `${SERVICE_DIR}/vnc-start.sh`,
@@ -576,7 +666,7 @@ echo "  vnc backend: $VNC_BIN"
           path: `${HOME}/WELCOME.md`,
           content: Buffer.from(
             [
-              "# Welcome to Sandcastle",
+              "# Welcome to vdesk",
               "",
               "You're running a full Linux desktop in the cloud, streamed to your browser.",
               "",
@@ -766,11 +856,12 @@ echo "  vnc backend: $VNC_BIN"
         console.error(`[${prefix}] Custom install script failed:`, stderr);
       }
     },
-  });
+    });
+  }
 
   console.log(`[${prefix}] All setup steps completed, creating snapshot...`);
   const snapshot = await sandbox.snapshot();
-  await setGoldenSnapshotId(snapshot.snapshotId);
+  await setGoldenSnapshotId(snapshot.snapshotId, experience);
 
   console.log(
     `[${prefix}] Created new golden snapshot: ${snapshot.snapshotId}`,

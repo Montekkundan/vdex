@@ -1,6 +1,10 @@
 import type { CreateSandboxResult } from "@/lib/sandbox/client";
 import type { SandboxInfo } from "@/types/sandbox";
-import type { DisplayClient, ProviderId } from "@/types/workspace";
+import type {
+  DisplayClient,
+  ProviderId,
+  WorkspaceExperience,
+} from "@/types/workspace";
 
 export type RuntimeResources = {
   vcpus: number;
@@ -11,6 +15,7 @@ export type CreateWorkspaceRuntimeParams = {
   snapshotId?: string;
   resources: RuntimeResources;
   displayClient: DisplayClient;
+  experience: WorkspaceExperience;
 };
 
 export type ProviderErrorCode =

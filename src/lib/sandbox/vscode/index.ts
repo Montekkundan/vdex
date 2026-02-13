@@ -2,7 +2,7 @@ import geistDark from "./geist-dark.json";
 import geistLight from "./geist-light.json";
 
 const EXTENSION_RELATIVE =
-  ".local/share/code-server/extensions/sandcastle-geist-theme";
+  ".local/share/code-server/extensions/vdesk-geist-theme";
 
 /**
  * Returns all files needed to configure code-server with Geist themes and
@@ -22,11 +22,11 @@ export function getCodeServerFiles(homeDir?: string): Array<{
       path: `${EXTENSION_DIR}/package.json`,
       content: JSON.stringify(
         {
-          name: "sandcastle-geist-theme",
+          name: "vdesk-geist-theme",
           displayName: "Geist Theme",
           description: "Vercel Geist design system theme for VS Code",
           version: "1.0.0",
-          publisher: "sandcastle",
+          publisher: "vdesk",
           engines: { vscode: "^1.60.0" },
           categories: ["Themes"],
           contributes: {

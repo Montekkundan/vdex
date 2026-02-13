@@ -16,14 +16,18 @@ import {
   replenishPool,
   expireOldSnapshotVMs,
 } from "../lib/sandbox/warm-pool";
+import type { WorkspaceExperience } from "../types/workspace";
 
 const installScript = process.argv.includes("--install")
   ? process.argv[process.argv.indexOf("--install") + 1]
   : undefined;
 
 const skipPool = process.argv.includes("--no-pool");
+const experience: WorkspaceExperience = process.argv.includes("--cli")
+  ? "cli"
+  : "gui";
 
-console.log("Starting golden snapshot build...");
+console.log(`Starting ${experience.toUpperCase()} golden snapshot build...`);
 if (installScript) {
   console.log(`Custom install script: ${installScript}`);
 }
@@ -35,6 +39,7 @@ try {
   const result = await buildGoldenSnapshot({
     installScript,
     logPrefix: "rebuild",
+    experience,
   });
 
   const elapsed = ((Date.now() - start) / 1000).toFixed(1);
@@ -42,9 +47,13 @@ try {
   console.log(`Golden snapshot created in ${elapsed}s`);
   console.log(JSON.stringify(result, null, 2));
   console.log("");
-  console.log("All new workspaces will use this snapshot.");
+  console.log(
+    experience === "cli"
+      ? "All new CLI workspaces will use this snapshot."
+      : "All new GUI workspaces will use this snapshot.",
+  );
 
-  if (!skipPool) {
+  if (!skipPool && experience === "gui") {
     console.log("\nRefreshing warm pool...");
 
     // Replenish first so new-snapshot VMs are available before clearing old ones

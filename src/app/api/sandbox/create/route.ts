@@ -16,6 +16,7 @@ import {
   validateDisplayClient,
   validateProvider,
   validateSizeProfile,
+  validateWorkspaceExperience,
   type CreateValidationErrorCode,
 } from "@/lib/runtime/validation";
 import { WORKSPACE_LIMITS } from "@/lib/sandbox/limits";
@@ -27,6 +28,7 @@ type CreateWorkspaceBody = {
   snapshotId?: string;
   workspaceId?: string;
   provider?: unknown;
+  experience?: unknown;
   displayClient?: unknown;
   sizeProfile?: unknown;
 };
@@ -120,15 +122,26 @@ export async function POST(req: Request) {
         );
       }
 
+      const resolvedExperience = validateWorkspaceExperience(
+        existingWorkspace.experience ?? "gui",
+      );
+      if (!resolvedExperience.ok) {
+        return createErrorResponse(
+          resolvedExperience.error.code,
+          resolvedExperience.error.message,
+        );
+      }
+
       const snapshotId =
         explicitSnapshotId ||
         existingWorkspace.snapshotId ||
-        (await getGoldenSnapshotId()) ||
+        (await getGoldenSnapshotId(resolvedExperience.value)) ||
         undefined;
 
       let sandbox =
         resolvedProvider.value === "vercel" &&
         !explicitSnapshotId &&
+        resolvedExperience.value === "gui" &&
         resolvedDisplayClient.value === "xpra" &&
         existingWorkspace.sizeProfile === "balanced_4c8g"
           ? await claimWarmVM()
@@ -144,6 +157,7 @@ export async function POST(req: Request) {
               memoryGb: resolvedSize.value.memoryGb,
             },
             displayClient: resolvedDisplayClient.value,
+            experience: resolvedExperience.value,
           });
         } catch (err) {
           const providerError = toProviderErrorResponse(err);
@@ -202,6 +216,7 @@ export async function POST(req: Request) {
     }
 
     const providerInput = body.provider ?? "vercel";
+    const experienceInput = body.experience ?? "gui";
     const displayClientInput = body.displayClient ?? "xpra";
     const sizeProfileInput = body.sizeProfile ?? "balanced_4c8g";
 
@@ -210,6 +225,14 @@ export async function POST(req: Request) {
       return createErrorResponse(
         resolvedProvider.error.code,
         resolvedProvider.error.message,
+      );
+    }
+
+    const resolvedExperience = validateWorkspaceExperience(experienceInput);
+    if (!resolvedExperience.ok) {
+      return createErrorResponse(
+        resolvedExperience.error.code,
+        resolvedExperience.error.message,
       );
     }
 
@@ -253,6 +276,7 @@ export async function POST(req: Request) {
           name: wsName,
           icon: icon || randomIcon,
           provider: resolvedProvider.value,
+          experience: resolvedExperience.value,
           displayClient: resolvedDisplayClient.value,
           sizeProfile: resolvedSize.value.id,
           status: "creating",
@@ -260,7 +284,7 @@ export async function POST(req: Request) {
         .returning(),
       explicitSnapshotId
         ? Promise.resolve(explicitSnapshotId)
-        : getGoldenSnapshotId(),
+        : getGoldenSnapshotId(resolvedExperience.value),
     ]);
 
     const [workspace] = insertResult;
@@ -272,6 +296,7 @@ export async function POST(req: Request) {
       sandbox =
         resolvedProvider.value === "vercel" &&
         !explicitSnapshotId &&
+        resolvedExperience.value === "gui" &&
         resolvedDisplayClient.value === "xpra" &&
         resolvedSize.value.id === "balanced_4c8g"
           ? await claimWarmVM()
@@ -286,6 +311,7 @@ export async function POST(req: Request) {
             memoryGb: resolvedSize.value.memoryGb,
           },
           displayClient: resolvedDisplayClient.value,
+          experience: resolvedExperience.value,
         });
       }
     } catch (provisionErr) {

@@ -140,7 +140,7 @@ function useDocumentTitle() {
   });
 
   useEffect(() => {
-    document.title = name ? `${name} \u2014 Sandcastle` : "Sandcastle";
+    document.title = name ? `${name} \u2014 vdesk` : "vdesk";
   }, [name]);
 }
 
@@ -172,12 +172,14 @@ export function DesktopShell({
     s.workspaces.find((w) => w.id === s.activeWorkspaceId),
   );
   const activeWorkspaceDisplayClient = activeWorkspaceFromStore?.displayClient ?? "xpra";
+  const activeWorkspaceExperience = activeWorkspaceFromStore?.experience ?? "gui";
   const showRemoteDisplay =
-    activeWorkspaceDisplayClient === "novnc" ||
-    activeWorkspaceDisplayClient === "vnc" ||
-    activeWorkspaceDisplayClient === "kasmvnc" ||
-    activeWorkspaceDisplayClient === "rdp" ||
-    activeWorkspaceDisplayClient === "webrtc";
+    activeWorkspaceExperience === "gui" &&
+    (activeWorkspaceDisplayClient === "novnc" ||
+      activeWorkspaceDisplayClient === "vnc" ||
+      activeWorkspaceDisplayClient === "kasmvnc" ||
+      activeWorkspaceDisplayClient === "rdp" ||
+      activeWorkspaceDisplayClient === "webrtc");
   const setWorkspaces = useWorkspaceStore((s) => s.setWorkspaces);
   const setActiveWorkspace = useWorkspaceStore((s) => s.setActiveWorkspace);
   const setSandboxInfo = useWorkspaceStore((s) => s.setSandboxInfo);
@@ -362,7 +364,7 @@ export function DesktopShell({
     if (!currentActive) {
       let lastId: string | null = null;
       try {
-        lastId = localStorage.getItem("sandcastle:last-workspace");
+        lastId = localStorage.getItem("vdesk:last-workspace");
       } catch {}
 
       const lastUsed = lastId ? workspaces.find((w) => w.id === lastId) : null;
@@ -472,15 +474,25 @@ export function DesktopShell({
           windowStateData as import("@/types/window").WindowState[],
         );
     } else {
-      // First boot: open Files window so user sees WELCOME.md
-      useWindowStore.getState().openWindow({
-        title: "Files",
-        appId: "file-manager",
-        width: 800,
-        height: 500,
-      });
+      const isCliWorkspace = activeWorkspaceFromStore?.experience === "cli";
+      // First boot: CLI workspaces open Terminal, GUI workspaces open Files.
+      useWindowStore.getState().openWindow(
+        isCliWorkspace
+          ? {
+              title: "Terminal",
+              appId: "terminal",
+              width: 900,
+              height: 560,
+            }
+          : {
+              title: "Files",
+              appId: "file-manager",
+              width: 800,
+              height: 500,
+            },
+      );
     }
-  }, [activeWorkspaceId, windowStateData]);
+  }, [activeWorkspaceId, windowStateData, activeWorkspaceFromStore?.experience]);
 
   // ---- Hydrate sandbox info for non-active workspaces ----
   const hydratedRef = useRef<Set<string>>(new Set());
@@ -648,14 +660,14 @@ export function DesktopShell({
         </AlertDialogContent>
       </AlertDialog>
       <DesktopBackground />
-      {activeWorkspaceDisplayClient === "xpra" ? (
+      {activeWorkspaceExperience === "gui" && activeWorkspaceDisplayClient === "xpra" ? (
         <XpraConnector />
       ) : showRemoteDisplay ? (
         <RemoteDisplayClient />
-      ) : (
+      ) : activeWorkspaceExperience === "gui" ? (
         <UnsupportedDisplayClientNote displayClient={activeWorkspaceDisplayClient} />
-      )}
-      {!showRemoteDisplay && (
+      ) : null}
+      {(activeWorkspaceExperience === "cli" || !showRemoteDisplay) && (
         <>
           <Desktop />
           <WindowRenderer />

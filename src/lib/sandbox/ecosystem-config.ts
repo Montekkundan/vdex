@@ -1,7 +1,7 @@
 import { PORTS } from "./ports";
 
-// All sandcastle services live under /opt/sandcastle/ to stay out of $HOME
-export const SERVICE_DIR = "/opt/sandcastle";
+// All vdesk services live under /opt/vdesk/ to stay out of $HOME
+export const SERVICE_DIR = "/opt/vdesk";
 
 // Xpra display number - use :10 to avoid low display warnings
 export const XPRA_DISPLAY = ":10";
@@ -9,13 +9,13 @@ export const VNC_DISPLAY = ":11";
 export const KASM_DISPLAY = ":12";
 export const RDP_DISPLAY = ":13";
 
-// Well-known D-Bus session bus socket path used by all sandcastle processes.
+// Well-known D-Bus session bus socket path used by all vdesk processes.
 // dbus-daemon is started by the Xpra wrapper and writes its address here.
-export const DBUS_SOCKET_PATH = "/tmp/sandcastle-dbus";
+export const DBUS_SOCKET_PATH = "/tmp/vdesk-dbus";
 
 // Shared file where the sandbox bridge writes notification/settings state.
 // The Node.js sandbox service reads this to serve /bridge/* API routes.
-export const BRIDGE_STATE_PATH = "/tmp/sandcastle-bridge.json";
+export const BRIDGE_STATE_PATH = "/tmp/vdesk-bridge.json";
 
 export function getEcosystemConfig(): string {
   const displayStartScript = `${SERVICE_DIR}/display-start.sh`;
@@ -25,7 +25,7 @@ export function getEcosystemConfig(): string {
 module.exports = {
   apps: [
     {
-      name: "sandcastle-svc",
+      name: "vdesk-svc",
       script: "${SERVICE_DIR}/service.js",
       cwd: "${SERVICE_DIR}",
       watch: false,
@@ -55,6 +55,7 @@ module.exports = {
       max_restarts: 5,
       env: {
         DISPLAY_CLIENT: process.env.DISPLAY_CLIENT || "xpra",
+        WORKSPACE_EXPERIENCE: process.env.WORKSPACE_EXPERIENCE || "gui",
         DBUS_SESSION_BUS_ADDRESS: "unix:path=${DBUS_SOCKET_PATH}",
       },
     },
@@ -104,7 +105,7 @@ module.exports = {
 export function getSandboxBridgeScript(): string {
   return `#!/usr/bin/env python3
 """
-sandcastle sandbox bridge daemon.
+vdesk sandbox bridge daemon.
 
 Bridges D-Bus services and monitors .desktop files, communicating with the
 browser via a shared JSON state file that the Node.js sandbox service reads.
@@ -127,7 +128,7 @@ import dbus.service
 import dbus.mainloop.glib
 from gi.repository import GLib
 
-STATE_PATH = os.environ.get("BRIDGE_STATE_PATH", "/tmp/sandcastle-bridge.json")
+STATE_PATH = os.environ.get("BRIDGE_STATE_PATH", "/tmp/vdesk-bridge.json")
 LOCK_PATH = STATE_PATH + ".lock"
 
 # ---- Shared state ----
@@ -289,7 +290,7 @@ class NotificationDaemon(dbus.service.Object):
     @dbus.service.method("org.freedesktop.Notifications",
                          in_signature="", out_signature="ssss")
     def GetServerInformation(self):
-        return ("sandcastle-bridge", "sandcastle", "1.0", "1.2")
+        return ("vdesk-bridge", "vdesk", "1.0", "1.2")
 
     @dbus.service.signal("org.freedesktop.Notifications",
                          signature="uu")
@@ -640,6 +641,14 @@ else
 fi
 VNC_PID=$!
 
+# Start a minimal GUI session for browser-based desktop stacks.
+if command -v openbox >/dev/null 2>&1; then
+  DISPLAY=${VNC_DISPLAY} openbox >/tmp/openbox.log 2>&1 &
+fi
+if command -v xterm >/dev/null 2>&1; then
+  DISPLAY=${VNC_DISPLAY} xterm -geometry 120x34+40+40 -title "vdesk Terminal" >/tmp/xterm.log 2>&1 &
+fi
+
 python3 -m websockify --web="$WEB_ROOT" ${PORTS.DISPLAY} localhost:5901 &
 WS_PID=$!
 
@@ -692,6 +701,13 @@ else
   exit 1
 fi
 VNC_PID=$!
+
+if command -v openbox >/dev/null 2>&1; then
+  DISPLAY=${VNC_DISPLAY} openbox >/tmp/openbox.log 2>&1 &
+fi
+if command -v xterm >/dev/null 2>&1; then
+  DISPLAY=${VNC_DISPLAY} xterm -geometry 120x34+40+40 -title "vdesk Terminal" >/tmp/xterm.log 2>&1 &
+fi
 
 # Browser bridge for the web app surface
 python3 -m websockify --web="$WEB_ROOT" ${PORTS.DISPLAY} localhost:5901 &
@@ -760,6 +776,12 @@ else
   exit 1
 fi
 VNC_PID=$!
+if command -v openbox >/dev/null 2>&1; then
+  DISPLAY=${KASM_DISPLAY} openbox >/tmp/openbox.log 2>&1 &
+fi
+if command -v xterm >/dev/null 2>&1; then
+  DISPLAY=${KASM_DISPLAY} xterm -geometry 120x34+40+40 -title "vdesk Terminal" >/tmp/xterm.log 2>&1 &
+fi
 python3 -m websockify --web="$WEB_ROOT" ${PORTS.DISPLAY} localhost:5902 &
 WS_PID=$!
 
@@ -785,50 +807,50 @@ done
 export DBUS_SESSION_BUS_ADDRESS="unix:path=$SOCKET"
 export GIO_USE_SYSTEMD=0
 export DISPLAY=${RDP_DISPLAY}
+WEB_ROOT="${SERVICE_DIR}/novnc"
+[ -f "$WEB_ROOT/vnc.html" ] || WEB_ROOT="/usr/share/novnc"
 
 cleanup() {
-  kill "$HTTP_PID" "$XRDP_PID" "$SESMAN_PID" "$DBUS_PID" 2>/dev/null || true
+  for pid in "\${XRDP_PID:-}" "\${SESMAN_PID:-}" "\${VNC_PID:-}" "\${WS_PID:-}" "\${XVFB_PID:-}" "\${DBUS_PID:-}"; do
+    [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
+  done
 }
 trap cleanup EXIT INT TERM
 
 xrdp-sesman --nodaemon &
 SESMAN_PID=$!
 
-xrdp --nodaemon &
+xrdp --nodaemon >/tmp/xrdp.log 2>&1 &
 XRDP_PID=$!
 
-WEB_ROOT="/tmp/rdp-display-web"
-mkdir -p "$WEB_ROOT"
-cat > "$WEB_ROOT/index.html" << 'EOF'
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>RDP Stack Active</title>
-    <style>
-      body { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; background:#0b0f17; color:#e6ecff; margin:0; padding:40px; }
-      .card { max-width:760px; margin:0 auto; background:#111827; border:1px solid #334155; border-radius:12px; padding:24px; }
-      h1 { margin:0 0 12px; font-size:24px; }
-      p { margin:8px 0; line-height:1.6; color:#cbd5e1; }
-      code { background:#0f172a; padding:2px 6px; border-radius:6px; color:#f8fafc; }
-    </style>
-  </head>
-  <body>
-    <div class="card">
-      <h1>RDP stack is running</h1>
-      <p>This workspace was provisioned with the <strong>RDP</strong> display stack.</p>
-      <p>The VM runs <code>xrdp</code> and <code>xrdp-sesman</code>. Use an RDP client against the sandbox runtime when a raw TCP route is available.</p>
-      <p>This web endpoint exists to keep the unified display domain healthy for workspace orchestration.</p>
-    </div>
-  </body>
-</html>
-EOF
+if command -v x11vnc >/dev/null 2>&1; then
+  Xvfb ${RDP_DISPLAY} -screen 0 1920x1080x24 -nolisten tcp &
+  XVFB_PID=$!
+  sleep 0.5
+  x11vnc -display ${RDP_DISPLAY} -forever -shared -rfbport 5903 -nopw -localhost &
+elif command -v x0vncserver >/dev/null 2>&1; then
+  Xvfb ${RDP_DISPLAY} -screen 0 1920x1080x24 -nolisten tcp &
+  XVFB_PID=$!
+  sleep 0.5
+  x0vncserver -display ${RDP_DISPLAY} -rfbport 5903 -SecurityTypes None -localhost -fg &
+elif command -v Xvnc >/dev/null 2>&1; then
+  Xvnc ${RDP_DISPLAY} -geometry 1920x1080 -depth 24 -rfbport 5903 -localhost -SecurityTypes None -fg &
+else
+  echo "No VNC server found (x11vnc, x0vncserver, or Xvnc required)" >&2
+  exit 1
+fi
+VNC_PID=$!
 
-python3 -m http.server ${PORTS.DISPLAY} --directory "$WEB_ROOT" &
-HTTP_PID=$!
+if command -v openbox >/dev/null 2>&1; then
+  DISPLAY=${RDP_DISPLAY} openbox >/tmp/openbox.log 2>&1 &
+fi
+if command -v xterm >/dev/null 2>&1; then
+  DISPLAY=${RDP_DISPLAY} xterm -geometry 120x34+40+40 -title "vdesk Terminal" >/tmp/xterm.log 2>&1 &
+fi
 
-wait "$HTTP_PID"
+python3 -m websockify --web="$WEB_ROOT" ${PORTS.DISPLAY} localhost:5903 &
+WS_PID=$!
+wait "$WS_PID"
 `;
 }
 
@@ -869,13 +891,43 @@ exec xpra start ${XPRA_DISPLAY} \\
 `;
 }
 
+export function getCliDisplayStartScript(): string {
+  return `#!/bin/bash
+set -euo pipefail
+
+WEB_ROOT="/tmp/vdesk-cli-display"
+mkdir -p "$WEB_ROOT"
+cat > "$WEB_ROOT/index.html" << 'EOF'
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>vdesk CLI</title>
+</head>
+<body style="font-family: ui-sans-serif, system-ui; margin: 2rem;">
+  <h1>vdesk CLI workspace</h1>
+  <p>This workspace is configured as CLI-only.</p>
+</body>
+</html>
+EOF
+
+python3 -m http.server ${PORTS.DISPLAY} --directory "$WEB_ROOT"
+`;
+}
+
 export function getDisplayStartScript(): string {
   return `#!/bin/bash
 set -euo pipefail
 
 CLIENT="\${DISPLAY_CLIENT:-xpra}"
+EXPERIENCE="\${WORKSPACE_EXPERIENCE:-gui}"
 
-  case "$CLIENT" in
+if [ "$EXPERIENCE" = "cli" ]; then
+  exec "${SERVICE_DIR}/cli-display-start.sh"
+fi
+
+case "$CLIENT" in
   xpra)
     exec "${SERVICE_DIR}/xpra-start.sh"
     ;;

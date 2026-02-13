@@ -4,6 +4,7 @@ import type {
   DisplayClient,
   ProviderId,
   SizeProfileId,
+  WorkspaceExperience,
   Workspace,
 } from "@/types/workspace";
 import type { SandboxInfo } from "@/types/sandbox";
@@ -13,6 +14,7 @@ export interface CreateWorkspaceInput {
   name?: string;
   icon?: string;
   provider?: ProviderId;
+  experience?: WorkspaceExperience;
   displayClient?: DisplayClient;
   sizeProfile?: SizeProfileId;
 }
@@ -156,7 +158,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   setActiveWorkspace: (id) => {
     set({ activeWorkspaceId: id });
     try {
-      localStorage.setItem("sandcastle:last-workspace", id);
+      localStorage.setItem("vdesk:last-workspace", id);
     } catch {}
   },
 
@@ -197,6 +199,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
           name: input?.name,
           icon: input?.icon,
           provider: input?.provider,
+          experience: input?.experience,
           displayClient: input?.displayClient,
           sizeProfile: input?.sizeProfile,
         }),
@@ -216,7 +219,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         creatingError: null,
       }));
       try {
-        localStorage.setItem("sandcastle:last-workspace", workspace.id);
+        localStorage.setItem("vdesk:last-workspace", workspace.id);
       } catch {}
       void mutateWorkspaces();
       return workspace;

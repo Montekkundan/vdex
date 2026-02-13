@@ -2,6 +2,7 @@ import type {
   DisplayClient,
   ProviderId,
   SizeProfileId,
+  WorkspaceExperience,
 } from "@/types/workspace";
 
 type SizeProfile = {
@@ -20,6 +21,13 @@ type DisplayClientProfile = {
 
 type ProviderProfile = {
   id: ProviderId;
+  label: string;
+  enabled: boolean;
+  reason?: string;
+};
+
+type ExperienceProfile = {
+  id: WorkspaceExperience;
   label: string;
   enabled: boolean;
   reason?: string;
@@ -99,6 +107,19 @@ export const PROVIDERS: Record<ProviderId, ProviderProfile> = {
   },
 };
 
+export const EXPERIENCES: Record<WorkspaceExperience, ExperienceProfile> = {
+  gui: {
+    id: "gui",
+    label: "GUI Desktop",
+    enabled: true,
+  },
+  cli: {
+    id: "cli",
+    label: "CLI Only",
+    enabled: true,
+  },
+};
+
 export function isValidProviderId(value: unknown): value is ProviderId {
   return typeof value === "string" && value in PROVIDERS;
 }
@@ -109,4 +130,10 @@ export function isValidDisplayClient(value: unknown): value is DisplayClient {
 
 export function isValidSizeProfileId(value: unknown): value is SizeProfileId {
   return typeof value === "string" && value in SIZE_PROFILES;
+}
+
+export function isValidWorkspaceExperience(
+  value: unknown,
+): value is WorkspaceExperience {
+  return typeof value === "string" && value in EXPERIENCES;
 }
