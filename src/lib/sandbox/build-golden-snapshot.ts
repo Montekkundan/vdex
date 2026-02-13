@@ -321,11 +321,42 @@ if ! command -v xrdp >/dev/null 2>&1; then
   ./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var
   make -j"$(nproc)"
   sudo make install
+  sudo ldconfig || true
 fi
 
-command -v xrdp
-command -v xrdp-sesman
-command -v x11vnc >/dev/null 2>&1 || command -v x0vncserver >/dev/null 2>&1
+find_bin() {
+  local name="$1"
+  shift
+  if command -v "$name" >/dev/null 2>&1; then
+    command -v "$name"
+    return 0
+  fi
+  for p in "$@"; do
+    if [ -x "$p" ]; then
+      echo "$p"
+      return 0
+    fi
+  done
+  return 1
+}
+
+XRDP_BIN="$(find_bin xrdp /usr/sbin/xrdp /usr/local/sbin/xrdp)" || {
+  echo "xrdp binary not found after install/build" >&2
+  exit 1
+}
+XRDP_SESMAN_BIN="$(find_bin xrdp-sesman /usr/sbin/xrdp-sesman /usr/local/sbin/xrdp-sesman)" || {
+  echo "xrdp-sesman binary not found after install/build" >&2
+  exit 1
+}
+VNC_BIN="$(find_bin x11vnc /usr/bin/x11vnc /usr/local/bin/x11vnc || find_bin x0vncserver /usr/bin/x0vncserver /usr/local/bin/x0vncserver)" || {
+  echo "No supported VNC backend found (x11vnc or x0vncserver)" >&2
+  exit 1
+}
+
+echo "Verified display prereqs:"
+echo "  xrdp: $XRDP_BIN"
+echo "  xrdp-sesman: $XRDP_SESMAN_BIN"
+echo "  vnc backend: $VNC_BIN"
 `;
 
   await all({
