@@ -69,9 +69,18 @@ export interface CreateSandboxResult extends SandboxInfo {
   fallback?: boolean;
 }
 
-export async function createSandbox(snapshotId?: string): Promise<CreateSandboxResult> {
+type SandboxResources = {
+  vcpus: number;
+  memoryGb: number;
+};
+
+export async function createSandbox(
+  snapshotId?: string,
+  resources?: SandboxResources,
+): Promise<CreateSandboxResult> {
   let sandbox: Sandbox;
   let usedSnapshot = false;
+  const sandboxResources = resources ? { vcpus: resources.vcpus } : undefined;
 
   if (snapshotId) {
     try {
@@ -79,6 +88,7 @@ export async function createSandbox(snapshotId?: string): Promise<CreateSandboxR
         source: { type: "snapshot", snapshotId },
         ports: SANDBOX_PORTS,
         timeout: DEFAULT_TIMEOUT,
+        resources: sandboxResources,
       });
       usedSnapshot = true;
     } catch (err: unknown) {
@@ -98,6 +108,7 @@ export async function createSandbox(snapshotId?: string): Promise<CreateSandboxR
           runtime: "node24",
           ports: SANDBOX_PORTS,
           timeout: DEFAULT_TIMEOUT,
+          resources: sandboxResources,
         });
       } else {
         throw err;
@@ -108,6 +119,7 @@ export async function createSandbox(snapshotId?: string): Promise<CreateSandboxR
       runtime: "node24",
       ports: SANDBOX_PORTS,
       timeout: DEFAULT_TIMEOUT,
+      resources: sandboxResources,
     });
   }
 

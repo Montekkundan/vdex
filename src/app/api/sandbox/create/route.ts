@@ -4,15 +4,105 @@ import { getSession } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
 import { workspaces } from "@/lib/db/schema";
 import { eq, count, inArray, and } from "drizzle-orm";
-import { createSandbox } from "@/lib/sandbox/client";
 import { getGoldenSnapshotId } from "@/lib/sandbox/golden-snapshot";
 import {
   claimWarmVM,
   triggerBackgroundReplenish,
 } from "@/lib/sandbox/warm-pool";
 import { WORKSPACE_ICON_NAMES, generateWorkspaceName } from "@/types/workspace";
+import {
+  DISPLAY_CLIENTS,
+  isValidDisplayClient,
+  isValidProviderId,
+  isValidSizeProfileId,
+  PROVIDERS,
+  SIZE_PROFILES,
+} from "@/lib/runtime/profiles";
+import { getProviderDriver } from "@/lib/runtime/providers";
+import { ProviderRuntimeError } from "@/lib/runtime/providers/types";
 import { WORKSPACE_LIMITS } from "@/lib/sandbox/limits";
 import { enforceRateLimit, RATE_LIMIT_IDS } from "@/lib/rate-limit";
+
+type CreateWorkspaceBody = {
+  name?: string;
+  icon?: string;
+  snapshotId?: string;
+  workspaceId?: string;
+  provider?: unknown;
+  displayClient?: unknown;
+  sizeProfile?: unknown;
+};
+
+function createErrorResponse(error: string, message: string, status = 400) {
+  return NextResponse.json({ error, message }, { status });
+}
+
+function resolveProvider(input: unknown) {
+  if (!isValidProviderId(input)) {
+    return {
+      error: createErrorResponse(
+        "UNSUPPORTED_PROVIDER",
+        `Provider '${String(input)}' is not supported.`,
+      ),
+    };
+  }
+
+  const config = PROVIDERS[input];
+  if (!config.enabled) {
+    return {
+      error: createErrorResponse(
+        "PROVIDER_NOT_IMPLEMENTED",
+        `Provider '${input}' is not available yet.`,
+      ),
+    };
+  }
+
+  return { value: input };
+}
+
+function resolveDisplayClient(input: unknown) {
+  if (!isValidDisplayClient(input)) {
+    return {
+      error: createErrorResponse(
+        "UNSUPPORTED_DISPLAY_CLIENT",
+        `Display client '${String(input)}' is not supported.`,
+      ),
+    };
+  }
+
+  const config = DISPLAY_CLIENTS[input];
+  if (!config.enabled) {
+    return {
+      error: createErrorResponse(
+        "DISPLAY_CLIENT_NOT_IMPLEMENTED",
+        `Display client '${input}' is not available yet.`,
+      ),
+    };
+  }
+
+  return { value: input };
+}
+
+function resolveSizeProfile(input: unknown) {
+  if (!isValidSizeProfileId(input)) {
+    return {
+      error: createErrorResponse(
+        "UNSUPPORTED_SIZE_PROFILE",
+        `Size profile '${String(input)}' is not supported.`,
+      ),
+    };
+  }
+
+  return { value: input, profile: SIZE_PROFILES[input] };
+}
+
+function toProviderErrorResponse(err: unknown) {
+  if (err instanceof ProviderRuntimeError) {
+    return createErrorResponse(err.code, err.message);
+  }
+
+  return null;
+}
 
 export async function POST(req: Request) {
   const session = await getSession();
@@ -37,29 +127,75 @@ export async function POST(req: Request) {
   if (ipRateLimited) return ipRateLimited;
 
   try {
-    const { name, icon, snapshotId: explicitSnapshotId, workspaceId } = await req.json();
+    const body = (await req.json()) as CreateWorkspaceBody;
+    const {
+      name,
+      icon,
+      snapshotId: explicitSnapshotId,
+      workspaceId,
+    } = body;
 
     // ---- Reconnect path: reuse an existing workspace row ----
     if (workspaceId) {
       const [existingWorkspace] = await db
         .select()
         .from(workspaces)
-        .where(eq(workspaces.id, workspaceId));
+        .where(
+          and(
+            eq(workspaces.id, workspaceId),
+            eq(workspaces.userId, session.id),
+          ),
+        );
 
-      if (!existingWorkspace || existingWorkspace.userId !== session.id) {
+      if (!existingWorkspace) {
         return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
       }
 
-      const snapshotId = explicitSnapshotId || existingWorkspace.snapshotId || (await getGoldenSnapshotId()) || undefined;
-      let sandbox = !explicitSnapshotId ? await claimWarmVM() : null;
+      const resolvedProvider = resolveProvider(existingWorkspace.provider);
+      if (resolvedProvider.error) return resolvedProvider.error;
+
+      const resolvedDisplayClient = resolveDisplayClient(existingWorkspace.displayClient);
+      if (resolvedDisplayClient.error) return resolvedDisplayClient.error;
+
+      const resolvedSize = resolveSizeProfile(existingWorkspace.sizeProfile);
+      if (resolvedSize.error) return resolvedSize.error;
+
+      const snapshotId =
+        explicitSnapshotId ||
+        existingWorkspace.snapshotId ||
+        (await getGoldenSnapshotId()) ||
+        undefined;
+
+      let sandbox =
+        resolvedProvider.value === "vercel" &&
+        !explicitSnapshotId &&
+        existingWorkspace.sizeProfile === "balanced_4c8g"
+          ? await claimWarmVM()
+          : null;
+
       if (!sandbox) {
-        sandbox = await createSandbox(snapshotId);
+        try {
+          const driver = getProviderDriver(resolvedProvider.value);
+          sandbox = await driver.createWorkspaceRuntime({
+            snapshotId,
+            resources: {
+              vcpus: resolvedSize.profile.vcpu,
+              memoryGb: resolvedSize.profile.memoryGb,
+            },
+          });
+        } catch (err) {
+          const providerError = toProviderErrorResponse(err);
+          if (providerError) return providerError;
+          throw err;
+        }
       }
 
-      const h = await headers();
-      const host = h.get("host");
-      const proto = h.get("x-forwarded-proto") || "https";
-      if (host) triggerBackgroundReplenish(`${proto}://${host}`);
+      if (resolvedProvider.value === "vercel") {
+        const h = await headers();
+        const host = h.get("host");
+        const proto = h.get("x-forwarded-proto") || "https";
+        if (host) triggerBackgroundReplenish(`${proto}://${host}`);
+      }
 
       const [updated] = await db
         .update(workspaces)
@@ -103,6 +239,19 @@ export async function POST(req: Request) {
       }
     }
 
+    const providerInput = body.provider ?? "vercel";
+    const displayClientInput = body.displayClient ?? "xpra";
+    const sizeProfileInput = body.sizeProfile ?? "balanced_4c8g";
+
+    const resolvedProvider = resolveProvider(providerInput);
+    if (resolvedProvider.error) return resolvedProvider.error;
+
+    const resolvedDisplayClient = resolveDisplayClient(displayClientInput);
+    if (resolvedDisplayClient.error) return resolvedDisplayClient.error;
+
+    const resolvedSize = resolveSizeProfile(sizeProfileInput);
+    if (resolvedSize.error) return resolvedSize.error;
+
     const randomIcon = WORKSPACE_ICON_NAMES[Math.floor(Math.random() * WORKSPACE_ICON_NAMES.length)];
     let wsName = name || generateWorkspaceName();
 
@@ -126,6 +275,9 @@ export async function POST(req: Request) {
           userId: session.id,
           name: wsName,
           icon: icon || randomIcon,
+          provider: resolvedProvider.value,
+          displayClient: resolvedDisplayClient.value,
+          sizeProfile: resolvedSize.value,
           status: "creating",
         })
         .returning(),
@@ -139,16 +291,31 @@ export async function POST(req: Request) {
 
     let sandbox;
     try {
-      // Try to claim a pre-warmed VM from the pool (only for golden snapshot creates)
-      sandbox = !explicitSnapshotId ? await claimWarmVM() : null;
+      // Try to claim a pre-warmed VM from the pool (only for default vercel profile)
+      sandbox =
+        resolvedProvider.value === "vercel" &&
+        !explicitSnapshotId &&
+        resolvedSize.value === "balanced_4c8g"
+          ? await claimWarmVM()
+          : null;
 
       if (!sandbox) {
-        // Pool empty or explicit snapshot -- create on-demand
-        sandbox = await createSandbox(snapshotId);
+        const driver = getProviderDriver(resolvedProvider.value);
+        sandbox = await driver.createWorkspaceRuntime({
+          snapshotId,
+          resources: {
+            vcpus: resolvedSize.profile.vcpu,
+            memoryGb: resolvedSize.profile.memoryGb,
+          },
+        });
       }
     } catch (provisionErr) {
       // Clean up the orphaned workspace row so it doesn't count toward limits
       await db.delete(workspaces).where(eq(workspaces.id, workspace.id));
+
+      const providerError = toProviderErrorResponse(provisionErr);
+      if (providerError) return providerError;
+
       console.error("Sandbox provisioning failed, cleaned up workspace row:", provisionErr);
       return NextResponse.json(
         { error: "Failed to create sandbox" },
@@ -157,11 +324,13 @@ export async function POST(req: Request) {
     }
 
     // Trigger background replenish (ISR-style: don't block the response)
-    const h = await headers();
-    const host = h.get("host");
-    const proto = h.get("x-forwarded-proto") || "https";
-    if (host) {
-      triggerBackgroundReplenish(`${proto}://${host}`);
+    if (resolvedProvider.value === "vercel") {
+      const h = await headers();
+      const host = h.get("host");
+      const proto = h.get("x-forwarded-proto") || "https";
+      if (host) {
+        triggerBackgroundReplenish(`${proto}://${host}`);
+      }
     }
 
     const [updated] = await db
