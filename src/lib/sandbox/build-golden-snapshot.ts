@@ -312,7 +312,7 @@ fi
 
 if ! command -v xrdp >/dev/null 2>&1; then
   sudo dnf install -y gcc gcc-c++ make autoconf automake libtool pkgconfig \
-    openssl-devel pam-devel libX11-devel libXfixes-devel libxkbfile-devel \
+    openssl-devel pam-devel libX11-devel libXfixes-devel libXrandr-devel libxkbfile-devel \
     fuse-devel pixman-devel systemd-devel
   rm -rf /tmp/xrdp-src
   git clone --depth 1 --branch v0.10.3 https://github.com/neutrinolabs/xrdp.git /tmp/xrdp-src
