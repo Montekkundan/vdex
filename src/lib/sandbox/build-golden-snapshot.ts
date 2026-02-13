@@ -55,7 +55,7 @@ export async function buildGoldenSnapshot(options?: {
     });
     if (result.exitCode !== 0) {
       const stderr = await result.stderr();
-      console.error(`[${prefix}] ${label} failed:`, stderr);
+      throw new Error(`[${prefix}] ${label} failed: ${stderr}`);
     }
     console.log(`[${prefix}] ${label} done`);
     return result;
@@ -284,6 +284,50 @@ else
 fi
 `;
 
+  const displayDepsScript = `
+set -euo pipefail
+
+# VNC server backend for noVNC/VNC/KasmVNC fallback
+sudo dnf install -y tigervnc-server-minimal || sudo dnf install -y tigervnc-server
+
+# websockify runtime used by display-start scripts
+python3 -m pip install --user --upgrade pip
+python3 -m pip install --user websockify
+python3 -c "import websockify"
+
+# noVNC static web client (distro package is not consistently available)
+mkdir -p ${SERVICE_DIR}
+if [ ! -f "${SERVICE_DIR}/novnc/vnc.html" ]; then
+  rm -rf /tmp/novnc-src
+  git clone --depth 1 https://github.com/novnc/noVNC.git /tmp/novnc-src
+  rm -rf "${SERVICE_DIR}/novnc"
+  mv /tmp/novnc-src "${SERVICE_DIR}/novnc"
+fi
+test -f "${SERVICE_DIR}/novnc/vnc.html"
+
+# RDP daemon (prefer package, fallback to source build)
+if ! command -v xrdp >/dev/null 2>&1; then
+  sudo dnf install -y xrdp || true
+fi
+
+if ! command -v xrdp >/dev/null 2>&1; then
+  sudo dnf install -y gcc gcc-c++ make autoconf automake libtool pkgconfig \
+    openssl-devel pam-devel libX11-devel libXfixes-devel libxkbfile-devel \
+    fuse-devel pixman-devel systemd-devel
+  rm -rf /tmp/xrdp-src
+  git clone --depth 1 --branch v0.10.3 https://github.com/neutrinolabs/xrdp.git /tmp/xrdp-src
+  cd /tmp/xrdp-src
+  ./bootstrap
+  ./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var
+  make -j"$(nproc)"
+  sudo make install
+fi
+
+command -v xrdp
+command -v xrdp-sesman
+command -v x11vnc >/dev/null 2>&1 || command -v x0vncserver >/dev/null 2>&1
+`;
+
   await all({
     // Download Xpra RPMs (fast, ~10s — kicks off immediately)
     async xpraDownload() {
@@ -305,7 +349,7 @@ fi
         [
           "sudo dnf install -y spal-release",
             "sudo dnf install -y vim-enhanced htop wget jq tree tmux ripgrep cpio" +
-            " xorg-x11-server-Xvfb xorg-x11-server-Xorg xorg-x11-drv-dummy mesa-dri-drivers dbus-x11 xdg-utils xorg-x11-fonts-misc xorg-x11-fonts-Type1 xorg-x11-fonts-100dpi xeyes x11vnc novnc python3-websockify xrdp" +
+            " xorg-x11-server-Xvfb xorg-x11-server-Xorg xorg-x11-drv-dummy mesa-dri-drivers dbus-x11 xdg-utils git python3-pip xorg-x11-fonts-misc xorg-x11-fonts-Type1 xorg-x11-fonts-100dpi xeyes" +
             " mesa-libEGL mesa-libGLES mesa-libgbm libglvnd-egl libglvnd-gles" +
             " gstreamer1 gstreamer1-plugins-base gstreamer1-plugins-good" +
             " firefox nautilus gnome-calculator gnome-text-editor gimp" +
@@ -315,6 +359,14 @@ fi
             " google-noto-sans-fonts google-noto-emoji-fonts dejavu-fonts-all adwaita-icon-theme",
           "sudo ln -sf /usr/bin/vim /usr/local/bin/vi",
         ].join(" && "),
+      );
+    },
+
+    async displayPrereqs() {
+      await this.$.dnfPackages;
+      return runStep(
+        "Display stack prerequisites (noVNC/VNC/Kasm fallback/RDP)",
+        displayDepsScript,
       );
     },
 

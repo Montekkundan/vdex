@@ -612,6 +612,8 @@ done
 export DBUS_SESSION_BUS_ADDRESS="unix:path=$SOCKET"
 export GIO_USE_SYSTEMD=0
 export DISPLAY=${VNC_DISPLAY}
+WEB_ROOT="${SERVICE_DIR}/novnc"
+[ -f "$WEB_ROOT/vnc.html" ] || WEB_ROOT="/usr/share/novnc"
 
 cleanup() {
   kill "$VNC_PID" "$WS_PID" "$XVFB_PID" "$DBUS_PID" 2>/dev/null || true
@@ -622,10 +624,17 @@ Xvfb ${VNC_DISPLAY} -screen 0 1920x1080x24 -nolisten tcp &
 XVFB_PID=$!
 sleep 0.5
 
-x11vnc -display ${VNC_DISPLAY} -forever -shared -rfbport 5901 -nopw -localhost &
+if command -v x11vnc >/dev/null 2>&1; then
+  x11vnc -display ${VNC_DISPLAY} -forever -shared -rfbport 5901 -nopw -localhost &
+elif command -v x0vncserver >/dev/null 2>&1; then
+  x0vncserver -display ${VNC_DISPLAY} -rfbport 5901 -SecurityTypes None -localhost -fg &
+else
+  echo "No VNC server found (x11vnc or x0vncserver required)" >&2
+  exit 1
+fi
 VNC_PID=$!
 
-websockify --web=/usr/share/novnc ${PORTS.DISPLAY} localhost:5901 &
+python3 -m websockify --web="$WEB_ROOT" ${PORTS.DISPLAY} localhost:5901 &
 WS_PID=$!
 
 wait "$WS_PID"
@@ -650,6 +659,8 @@ done
 export DBUS_SESSION_BUS_ADDRESS="unix:path=$SOCKET"
 export GIO_USE_SYSTEMD=0
 export DISPLAY=${VNC_DISPLAY}
+WEB_ROOT="${SERVICE_DIR}/novnc"
+[ -f "$WEB_ROOT/vnc.html" ] || WEB_ROOT="/usr/share/novnc"
 
 cleanup() {
   kill "$VNC_PID" "$WS_PID" "$XVFB_PID" "$DBUS_PID" 2>/dev/null || true
@@ -660,12 +671,18 @@ Xvfb ${VNC_DISPLAY} -screen 0 1920x1080x24 -nolisten tcp &
 XVFB_PID=$!
 sleep 0.5
 
-# Real VNC server endpoint
-x11vnc -display ${VNC_DISPLAY} -forever -shared -rfbport 5901 -nopw -localhost &
+if command -v x11vnc >/dev/null 2>&1; then
+  x11vnc -display ${VNC_DISPLAY} -forever -shared -rfbport 5901 -nopw -localhost &
+elif command -v x0vncserver >/dev/null 2>&1; then
+  x0vncserver -display ${VNC_DISPLAY} -rfbport 5901 -SecurityTypes None -localhost -fg &
+else
+  echo "No VNC server found (x11vnc or x0vncserver required)" >&2
+  exit 1
+fi
 VNC_PID=$!
 
 # Browser bridge for the web app surface
-websockify --web=/usr/share/novnc ${PORTS.DISPLAY} localhost:5901 &
+python3 -m websockify --web="$WEB_ROOT" ${PORTS.DISPLAY} localhost:5901 &
 WS_PID=$!
 
 wait "$WS_PID"
@@ -690,6 +707,8 @@ done
 export DBUS_SESSION_BUS_ADDRESS="unix:path=$SOCKET"
 export GIO_USE_SYSTEMD=0
 export DISPLAY=${KASM_DISPLAY}
+WEB_ROOT="${SERVICE_DIR}/novnc"
+[ -f "$WEB_ROOT/vnc.html" ] || WEB_ROOT="/usr/share/novnc"
 
 cleanup() {
   kill "$KASM_PID" "$VNC_PID" "$WS_PID" "$XVFB_PID" "$DBUS_PID" 2>/dev/null || true
@@ -714,9 +733,16 @@ Xvfb ${KASM_DISPLAY} -screen 0 1920x1080x24 -nolisten tcp &
 XVFB_PID=$!
 sleep 0.5
 
-x11vnc -display ${KASM_DISPLAY} -forever -shared -rfbport 5902 -nopw -localhost &
+if command -v x11vnc >/dev/null 2>&1; then
+  x11vnc -display ${KASM_DISPLAY} -forever -shared -rfbport 5902 -nopw -localhost &
+elif command -v x0vncserver >/dev/null 2>&1; then
+  x0vncserver -display ${KASM_DISPLAY} -rfbport 5902 -SecurityTypes None -localhost -fg &
+else
+  echo "No VNC server found (x11vnc or x0vncserver required)" >&2
+  exit 1
+fi
 VNC_PID=$!
-websockify --web=/usr/share/novnc ${PORTS.DISPLAY} localhost:5902 &
+python3 -m websockify --web="$WEB_ROOT" ${PORTS.DISPLAY} localhost:5902 &
 WS_PID=$!
 
 wait "$WS_PID"
