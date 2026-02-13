@@ -24,6 +24,23 @@ export async function GET() {
   const reconciled = [...items];
   await Promise.all(
     reconciled.map(async (workspace, idx) => {
+      if (workspace.experience !== "cli" || workspace.displayClient === "none") {
+        return;
+      }
+      await db
+        .update(workspaces)
+        .set({ displayClient: "none", updatedAt: new Date() })
+        .where(eq(workspaces.id, workspace.id));
+      reconciled[idx] = {
+        ...workspace,
+        displayClient: "none",
+        updatedAt: new Date(),
+      };
+    }),
+  );
+
+  await Promise.all(
+    reconciled.map(async (workspace, idx) => {
       if (workspace.status !== "active" || !workspace.sandboxId) return;
       try {
         const sandbox = await getSandbox(workspace.sandboxId);

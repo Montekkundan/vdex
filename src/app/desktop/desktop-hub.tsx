@@ -130,7 +130,7 @@ export function DesktopHub() {
         icon: newWorkspaceIcon,
         provider: newWorkspaceProvider,
         experience: newWorkspaceExperience,
-        displayClient: newWorkspaceExperience === "gui" ? newWorkspaceDisplayClient : "xpra",
+        displayClient: newWorkspaceExperience === "gui" ? newWorkspaceDisplayClient : "none",
         sizeProfile: newWorkspaceSizeProfile,
       });
       setCreateDialogOpen(false);
@@ -468,7 +468,9 @@ export function DesktopHub() {
                   <SelectValue placeholder="Select display client" />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.values(DISPLAY_CLIENTS).map((client) => (
+                  {Object.values(DISPLAY_CLIENTS)
+                    .filter((client) => client.id !== "none")
+                    .map((client) => (
                     <SelectItem
                       key={client.id}
                       value={client.id}

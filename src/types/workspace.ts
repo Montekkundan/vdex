@@ -8,6 +8,7 @@ export type WorkspaceStatus =
 export type ProviderId = "vercel" | "azure" | "gcp";
 export type WorkspaceExperience = "gui" | "cli";
 export type DisplayClient =
+  | "none"
   | "xpra"
   | "rdp"
   | "vnc"

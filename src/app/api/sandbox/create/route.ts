@@ -104,16 +104,6 @@ export async function POST(req: Request) {
         );
       }
 
-      const resolvedDisplayClient = validateDisplayClient(
-        existingWorkspace.displayClient,
-      );
-      if (!resolvedDisplayClient.ok) {
-        return createErrorResponse(
-          resolvedDisplayClient.error.code,
-          resolvedDisplayClient.error.message,
-        );
-      }
-
       const resolvedSize = validateSizeProfile(existingWorkspace.sizeProfile);
       if (!resolvedSize.ok) {
         return createErrorResponse(
@@ -129,6 +119,16 @@ export async function POST(req: Request) {
         return createErrorResponse(
           resolvedExperience.error.code,
           resolvedExperience.error.message,
+        );
+      }
+      const resolvedDisplayClient =
+        resolvedExperience.value === "cli"
+          ? { ok: true as const, value: "none" as const }
+          : validateDisplayClient(existingWorkspace.displayClient);
+      if (!resolvedDisplayClient.ok) {
+        return createErrorResponse(
+          resolvedDisplayClient.error.code,
+          resolvedDisplayClient.error.message,
         );
       }
 
@@ -178,6 +178,7 @@ export async function POST(req: Request) {
         .set({
           sandboxId: sandbox.sandboxId,
           snapshotId: snapshotId || existingWorkspace.snapshotId,
+          displayClient: resolvedDisplayClient.value,
           status: "active",
           updatedAt: new Date(),
         })
@@ -236,7 +237,10 @@ export async function POST(req: Request) {
       );
     }
 
-    const resolvedDisplayClient = validateDisplayClient(displayClientInput);
+    const resolvedDisplayClient =
+      resolvedExperience.value === "cli"
+        ? { ok: true as const, value: "none" as const }
+        : validateDisplayClient(displayClientInput);
     if (!resolvedDisplayClient.ok) {
       return createErrorResponse(
         resolvedDisplayClient.error.code,

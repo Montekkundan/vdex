@@ -55,6 +55,11 @@ export const SIZE_PROFILES: Record<SizeProfileId, SizeProfile> = {
 };
 
 export const DISPLAY_CLIENTS: Record<DisplayClient, DisplayClientProfile> = {
+  none: {
+    id: "none",
+    label: "None (CLI)",
+    enabled: true,
+  },
   xpra: {
     id: "xpra",
     label: "Xpra",

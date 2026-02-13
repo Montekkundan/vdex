@@ -7,8 +7,8 @@ import type { DisplayClient } from "@/types/workspace";
 
 function isRemoteIframeClient(
   value: DisplayClient,
-): value is Exclude<DisplayClient, "xpra"> {
-  return value !== "xpra";
+): value is Exclude<DisplayClient, "xpra" | "none"> {
+  return value !== "xpra" && value !== "none";
 }
 
 export function RemoteDisplayClient() {

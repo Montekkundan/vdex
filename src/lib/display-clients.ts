@@ -2,6 +2,8 @@ import type { DisplayClient } from "@/types/workspace";
 
 export function getDisplayHealthPath(client: DisplayClient): string {
   switch (client) {
+    case "none":
+      return "/";
     case "novnc":
     case "vnc":
     case "rdp":
@@ -16,7 +18,7 @@ export function getDisplayHealthPath(client: DisplayClient): string {
 }
 
 export function getDisplayIframeUrl(
-  client: Exclude<DisplayClient, "xpra">,
+  client: Exclude<DisplayClient, "xpra" | "none">,
   displayDomain: string,
 ): string {
   const base = `https://${displayDomain}`;
