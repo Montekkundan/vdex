@@ -644,6 +644,8 @@ VNC_PID=$!
 # Start a minimal GUI session for browser-based desktop stacks.
 if command -v openbox >/dev/null 2>&1; then
   DISPLAY=${VNC_DISPLAY} openbox >/tmp/openbox.log 2>&1 &
+elif command -v twm >/dev/null 2>&1; then
+  DISPLAY=${VNC_DISPLAY} twm >/tmp/twm.log 2>&1 &
 fi
 if command -v xterm >/dev/null 2>&1; then
   DISPLAY=${VNC_DISPLAY} xterm -geometry 120x34+40+40 -title "vdesk Terminal" >/tmp/xterm.log 2>&1 &
@@ -704,6 +706,8 @@ VNC_PID=$!
 
 if command -v openbox >/dev/null 2>&1; then
   DISPLAY=${VNC_DISPLAY} openbox >/tmp/openbox.log 2>&1 &
+elif command -v twm >/dev/null 2>&1; then
+  DISPLAY=${VNC_DISPLAY} twm >/tmp/twm.log 2>&1 &
 fi
 if command -v xterm >/dev/null 2>&1; then
   DISPLAY=${VNC_DISPLAY} xterm -geometry 120x34+40+40 -title "vdesk Terminal" >/tmp/xterm.log 2>&1 &
@@ -778,6 +782,8 @@ fi
 VNC_PID=$!
 if command -v openbox >/dev/null 2>&1; then
   DISPLAY=${KASM_DISPLAY} openbox >/tmp/openbox.log 2>&1 &
+elif command -v twm >/dev/null 2>&1; then
+  DISPLAY=${KASM_DISPLAY} twm >/tmp/twm.log 2>&1 &
 fi
 if command -v xterm >/dev/null 2>&1; then
   DISPLAY=${KASM_DISPLAY} xterm -geometry 120x34+40+40 -title "vdesk Terminal" >/tmp/xterm.log 2>&1 &
@@ -843,6 +849,8 @@ VNC_PID=$!
 
 if command -v openbox >/dev/null 2>&1; then
   DISPLAY=${RDP_DISPLAY} openbox >/tmp/openbox.log 2>&1 &
+elif command -v twm >/dev/null 2>&1; then
+  DISPLAY=${RDP_DISPLAY} twm >/tmp/twm.log 2>&1 &
 fi
 if command -v xterm >/dev/null 2>&1; then
   DISPLAY=${RDP_DISPLAY} xterm -geometry 120x34+40+40 -title "vdesk Terminal" >/tmp/xterm.log 2>&1 &

@@ -12,6 +12,7 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "snapshot": "bun run src/scripts/rebuild-golden-snapshot.ts",
+    "snapshot:all": "bun run src/scripts/rebuild-golden-snapshot.ts && bun run src/scripts/rebuild-golden-snapshot.ts --cli",
     "test:sandbox": "bun run src/scripts/test-sandbox-services.ts"
   },
   "dependencies": {
