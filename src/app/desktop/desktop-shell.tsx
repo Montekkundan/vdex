@@ -648,7 +648,7 @@ export function DesktopShell({
                 Display client &quot;{activeWorkspaceDisplayClient}&quot; is not implemented yet.
               </p>
               <p className="mt-1 text-copy-13 text-gray-900">
-                This workspace cannot render desktop windows until display support is added.
+                Switch this workspace to Xpra or create a new workspace with Xpra.
               </p>
             </Note>
           </div>

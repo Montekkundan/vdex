@@ -58,19 +58,19 @@ export async function GET(
     : workspace;
 
   let servicesReady = false;
-  let xpraReady = false;
+  let displayReady = false;
   if (sandbox) {
     servicesReady = await isHttpEndpointReady(
       `https://${sandbox.domains.services}/health`,
     );
-    xpraReady = await isHttpEndpointReady(`https://${sandbox.domains.xpra}`);
+    displayReady = await isHttpEndpointReady(`https://${sandbox.domains.display}`);
   }
 
   return NextResponse.json({
     workspace: current,
     sandbox,
     servicesReady,
-    xpraReady,
+    displayReady,
     // Signal to the client that the sandbox died so it can auto-recover
     sandboxLost,
     canRecover: sandboxLost && !!(current.snapshotId),

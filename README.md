@@ -25,6 +25,21 @@ Core idea: this is a per-user interface on top of that user's Vercel Sandbox res
 - `@vercel/sandbox` for sandbox create/get/stop/snapshot/extend
 - Xpra + sandbox services running inside each sandbox
 
+### Port Structure
+
+Each sandbox exposes 4 fixed ports:
+
+- `14080`: selected display transport (Xpra/RDP/VNC/noVNC/KasmVNC/WebRTC via unified display domain)
+- `14081`: services/control API (files, processes, terminal relay, bridge APIs)
+- `14082`: code-server
+- `14083`: preview (user app/dev server previews)
+
+Display abstraction:
+
+- The app now treats `14080` as a generic `display` endpoint.
+- Workspace `displayClient` selects the display mode.
+- In the current compatibility implementation, all display modes route through the same display gateway endpoint on `14080`.
+
 ## Important Operational Notes
 
 - A workspace row can exist even if the underlying sandbox died; APIs reconcile and mark it stopped.

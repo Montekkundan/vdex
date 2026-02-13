@@ -15,11 +15,12 @@ function stripProtocol(url: string): string {
 }
 
 function buildSandboxInfo(sandbox: Sandbox): SandboxInfo {
+  const displayDomain = stripProtocol(sandbox.domain(PORTS.DISPLAY));
   return {
     sandboxId: sandbox.sandboxId,
     status: sandbox.status,
     domains: {
-      xpra: stripProtocol(sandbox.domain(PORTS.XPRA)),
+      display: displayDomain,
       services: stripProtocol(sandbox.domain(PORTS.SERVICES)),
       codeServer: stripProtocol(sandbox.domain(PORTS.CODE_SERVER)),
       preview: stripProtocol(sandbox.domain(PORTS.PREVIEW)),
@@ -41,17 +42,17 @@ async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Respons
 
 async function waitForSandboxReadiness(sandbox: Sandbox): Promise<void> {
   const servicesUrl = `${sandbox.domain(PORTS.SERVICES)}/health`;
-  const xpraUrl = sandbox.domain(PORTS.XPRA);
+  const displayUrl = sandbox.domain(PORTS.DISPLAY);
   const deadline = Date.now() + READINESS_TIMEOUT_MS;
 
   while (Date.now() < deadline) {
     try {
-      const [servicesRes, xpraRes] = await Promise.all([
+      const [servicesRes, displayRes] = await Promise.all([
         fetchWithTimeout(servicesUrl, 2_000),
-        fetchWithTimeout(xpraUrl, 2_000),
+        fetchWithTimeout(displayUrl, 2_000),
       ]);
 
-      if (servicesRes.ok && xpraRes.ok) {
+      if (servicesRes.ok && displayRes.ok) {
         return;
       }
     } catch {

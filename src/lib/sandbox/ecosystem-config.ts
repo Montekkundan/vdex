@@ -577,7 +577,7 @@ export GIO_USE_SYSTEMD=0
 # X11 apps that use Xpra's internal notification mechanism.
 
 exec xpra start ${XPRA_DISPLAY} \\
-  --bind-ws=0.0.0.0:${PORTS.XPRA} \\
+  --bind-ws=0.0.0.0:${PORTS.DISPLAY} \\
   --html=on \\
   --sharing=yes \\
   --no-daemon \\
@@ -589,5 +589,4 @@ exec xpra start ${XPRA_DISPLAY} \\
   --microphone=no
 `;
 }
-
 

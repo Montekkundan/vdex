@@ -29,10 +29,10 @@ export function XpraConnector() {
   // Connect to Xpra when sandbox is active
   useEffect(() => {
     if (activeWorkspaceDisplayClient !== "xpra") return;
-    if (!sandbox?.domains.xpra || !activeWorkspaceId) return;
+    if (!sandbox?.domains.display || !activeWorkspaceId) return;
     if (!isLiveSandboxStatus(sandbox.status)) return;
 
-    const xpraDomain = sandbox.domains.xpra;
+    const xpraDomain = sandbox.domains.display;
     if (connectedSandboxRef.current === xpraDomain) return;
 
     connectedSandboxRef.current = xpraDomain;
@@ -46,7 +46,7 @@ export function XpraConnector() {
     };
   }, [
     activeWorkspaceDisplayClient,
-    sandbox?.domains.xpra,
+    sandbox?.domains.display,
     sandbox?.status,
     activeWorkspaceId,
     xpraConnect,

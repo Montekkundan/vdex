@@ -419,10 +419,10 @@ EOF`,
     await assert("Xpra is listening on the expected WebSocket port", async () => {
       const result = await sandbox.runCommand({
         cmd: "bash",
-        args: ["-c", `ss -tln 2>/dev/null | grep -q :${PORTS.XPRA} && echo LISTENING || echo NOT_LISTENING`],
+        args: ["-c", `ss -tln 2>/dev/null | grep -q :${PORTS.DISPLAY} && echo LISTENING || echo NOT_LISTENING`],
       });
       const stdout = (await result.stdout()).trim();
-      expectIncludes(stdout, "LISTENING", `port ${PORTS.XPRA} is listening`);
+      expectIncludes(stdout, "LISTENING", `port ${PORTS.DISPLAY} is listening`);
     });
 
     await assert("DISPLAY environment is set to :10", async () => {

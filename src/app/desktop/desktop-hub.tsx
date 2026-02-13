@@ -162,7 +162,7 @@ export function DesktopHub() {
 
       // Wait for display stack to be ready before navigating.
       const timeoutAt = Date.now() + 30_000;
-      let ready = Boolean(body?.xpraReady && body?.servicesReady);
+      let ready = Boolean(body?.displayReady && body?.servicesReady);
       while (!ready && Date.now() < timeoutAt) {
         await new Promise((resolve) => setTimeout(resolve, 1000));
         const check = await fetch(`/api/sandbox/${id}`).catch(() => null);
@@ -173,7 +173,7 @@ export function DesktopHub() {
           setActionError("VM expired while starting. Try again.");
           return;
         }
-        ready = Boolean(next?.xpraReady && next?.servicesReady);
+        ready = Boolean(next?.displayReady && next?.servicesReady);
       }
 
       if (!ready) {
