@@ -6,6 +6,7 @@ import { getServiceCode } from "./sandbox-services";
 import {
   getDisplayStartScript,
   getEcosystemConfig,
+  getKasmVncStartScript,
   getNoVncStartScript,
   getVncStartScript,
   getXpraStartScript,
@@ -434,6 +435,10 @@ fi
           content: Buffer.from(getVncStartScript()),
         },
         {
+          path: `${SERVICE_DIR}/kasmvnc-start.sh`,
+          content: Buffer.from(getKasmVncStartScript()),
+        },
+        {
           path: `${SERVICE_DIR}/sandbox-bridge.py`,
           content: Buffer.from(getSandboxBridgeScript()),
         },
@@ -452,6 +457,7 @@ fi
             `${SERVICE_DIR}/xpra-start.sh`,
             `${SERVICE_DIR}/novnc-start.sh`,
             `${SERVICE_DIR}/vnc-start.sh`,
+            `${SERVICE_DIR}/kasmvnc-start.sh`,
           ],
         }),
         sandbox.runCommand({

@@ -71,8 +71,7 @@ export const DISPLAY_CLIENTS: Record<DisplayClient, DisplayClientProfile> = {
   kasmvnc: {
     id: "kasmvnc",
     label: "KasmVNC",
-    enabled: false,
-    reason: "Not yet implemented",
+    enabled: true,
   },
   webrtc: {
     id: "webrtc",

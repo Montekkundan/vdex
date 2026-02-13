@@ -42,7 +42,7 @@ export function UnsupportedDisplayClientNote({ displayClient }: { displayClient:
             Display client &quot;{displayClient}&quot; is not available.
           </p>
           <p className="mt-1 text-copy-13 text-gray-900">
-            Choose Xpra, noVNC, or VNC for now.
+            Choose Xpra, noVNC, VNC, or KasmVNC for now.
           </p>
         </Note>
       </div>

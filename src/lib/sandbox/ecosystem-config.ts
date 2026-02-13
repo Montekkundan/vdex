@@ -6,6 +6,7 @@ export const SERVICE_DIR = "/opt/sandcastle";
 // Xpra display number - use :10 to avoid low display warnings
 export const XPRA_DISPLAY = ":10";
 export const VNC_DISPLAY = ":11";
+export const KASM_DISPLAY = ":12";
 
 // Well-known D-Bus session bus socket path used by all sandcastle processes.
 // dbus-daemon is started by the Xpra wrapper and writes its address here.
@@ -670,6 +671,57 @@ wait "$WS_PID"
 `;
 }
 
+export function getKasmVncStartScript(): string {
+  return `#!/bin/bash
+set -euo pipefail
+
+SOCKET="${DBUS_SOCKET_PATH}"
+rm -f "$SOCKET"
+
+dbus-daemon --session --nofork --address="unix:path=$SOCKET" &
+DBUS_PID=$!
+
+for i in $(seq 1 20); do
+  [ -S "$SOCKET" ] && break
+  sleep 0.1
+done
+
+export DBUS_SESSION_BUS_ADDRESS="unix:path=$SOCKET"
+export GIO_USE_SYSTEMD=0
+export DISPLAY=${KASM_DISPLAY}
+
+cleanup() {
+  kill "$KASM_PID" "$VNC_PID" "$WS_PID" "$XVFB_PID" "$DBUS_PID" 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+
+if command -v kasmvncserver >/dev/null 2>&1; then
+  kasmvncserver \
+    -interface 0.0.0.0 \
+    -websocketPort ${PORTS.DISPLAY} \
+    -geometry 1920x1080 \
+    -SecurityTypes None \
+    -localhost no \
+    -fg &
+  KASM_PID=$!
+  wait "$KASM_PID"
+  exit 0
+fi
+
+# Fallback: expose a Kasm-compatible browser experience on the same port.
+Xvfb ${KASM_DISPLAY} -screen 0 1920x1080x24 -nolisten tcp &
+XVFB_PID=$!
+sleep 0.5
+
+x11vnc -display ${KASM_DISPLAY} -forever -shared -rfbport 5902 -nopw -localhost &
+VNC_PID=$!
+websockify --web=/usr/share/novnc ${PORTS.DISPLAY} localhost:5902 &
+WS_PID=$!
+
+wait "$WS_PID"
+`;
+}
+
 export function getDisplayStartScript(): string {
   return `#!/bin/bash
 set -euo pipefail
@@ -685,6 +737,9 @@ CLIENT="\${DISPLAY_CLIENT:-xpra}"
     ;;
   vnc)
     exec "${SERVICE_DIR}/vnc-start.sh"
+    ;;
+  kasmvnc)
+    exec "${SERVICE_DIR}/kasmvnc-start.sh"
     ;;
   *)
     echo "Unsupported DISPLAY_CLIENT: $CLIENT" >&2
