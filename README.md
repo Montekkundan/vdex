@@ -1,36 +1,95 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# VDEX
 
-## Getting Started
+VDEX is a web desktop for Vercel Sandbox.
 
-First, run the development server:
+Each user signs in, creates their own workspace VM, and gets a GUI desktop in the browser that can run:
+
+- built-in web apps (Files, Terminal, Settings, App Store, Code)
+- Linux GUI apps streamed via Xpra (for example Firefox)
+
+Core idea: this is a per-user interface on top of that user's Vercel Sandbox resources.
+
+## What This App Does
+
+- User authentication and workspace ownership
+- Workspace list at `/desktop`
+- Per-workspace desktop at `/desktop/[slug]`
+- Start, open, shutdown, snapshot, restart, and delete workspace actions
+- Snapshot-based recovery for stopped/expired sandboxes
+- Xpra bridge for X11 application streaming
+
+## Current Architecture (High-level)
+
+- Next.js app/router for UI + API
+- Postgres (Neon via Drizzle) for users/workspaces/config
+- `@vercel/sandbox` for sandbox create/get/stop/snapshot/extend
+- Xpra + sandbox services running inside each sandbox
+
+## Important Operational Notes
+
+- A workspace row can exist even if the underlying sandbox died; APIs reconcile and mark it stopped.
+- "Start" is only available when a workspace has a snapshot ID.
+- Warm pool behavior is environment-configurable:
+  - `WARM_POOL_TARGET`
+  - `WARM_POOL_AUTO_REPLENISH`
+- On local development (`localhost`), service calls are routed through same-origin API proxy paths to avoid CORS issues.
+
+## Setup
+
+## 1. Install
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+bun install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 2. Configure env
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Copy `.env.example` to `.env` and set values:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `DATABASE_URL`
+- `SESSION_SECRET`
+- `CRON_SECRET`
+- `VERCEL_CLIENT_ID`
+- `VERCEL_CLIENT_SECRET`
+- optional: `BETTER_AUTH_URL`
+- optional warm pool values (`WARM_POOL_TARGET`, `WARM_POOL_AUTO_REPLENISH`)
 
-## Learn More
+## 3. Database
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+bun run db:push
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 4. Build a golden snapshot (recommended)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+bun run snapshot
+```
 
-## Deploy on Vercel
+This prepares the baseline VM image so new workspaces have the full GUI stack (Xpra, desktop tools, etc).
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## 5. Run locally
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+bun run dev
+```
+
+Open `http://localhost:3000`.
+
+## Scripts
+
+- `bun run dev` - start dev server
+- `bun run build` - production build
+- `bun run snapshot` - rebuild golden snapshot
+- `bun run test:sandbox` - integration check for sandbox services
+- `bun run db:push` - sync schema
+
+## Deployment Notes (Hobby)
+
+- Hobby cron can run once/day only.
+- If you deploy on Hobby, avoid frequent cron schedules.
+- `maxDuration` for Serverless Functions must be `<= 300`.
+
+## Scope
+
+This project is a practical browser GUI for user-owned Vercel sandboxes, not a full Linux distro or a full desktop environment replacement.
