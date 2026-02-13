@@ -10,16 +10,14 @@ import {
   triggerBackgroundReplenish,
 } from "@/lib/sandbox/warm-pool";
 import { WORKSPACE_ICON_NAMES, generateWorkspaceName } from "@/types/workspace";
-import {
-  DISPLAY_CLIENTS,
-  isValidDisplayClient,
-  isValidProviderId,
-  isValidSizeProfileId,
-  PROVIDERS,
-  SIZE_PROFILES,
-} from "@/lib/runtime/profiles";
 import { getProviderDriver } from "@/lib/runtime/providers";
 import { ProviderRuntimeError } from "@/lib/runtime/providers/types";
+import {
+  validateDisplayClient,
+  validateProvider,
+  validateSizeProfile,
+  type CreateValidationErrorCode,
+} from "@/lib/runtime/validation";
 import { WORKSPACE_LIMITS } from "@/lib/sandbox/limits";
 import { enforceRateLimit, RATE_LIMIT_IDS } from "@/lib/rate-limit";
 
@@ -33,67 +31,12 @@ type CreateWorkspaceBody = {
   sizeProfile?: unknown;
 };
 
-function createErrorResponse(error: string, message: string, status = 400) {
+function createErrorResponse(
+  error: CreateValidationErrorCode | string,
+  message: string,
+  status = 400,
+) {
   return NextResponse.json({ error, message }, { status });
-}
-
-function resolveProvider(input: unknown) {
-  if (!isValidProviderId(input)) {
-    return {
-      error: createErrorResponse(
-        "UNSUPPORTED_PROVIDER",
-        `Provider '${String(input)}' is not supported.`,
-      ),
-    };
-  }
-
-  const config = PROVIDERS[input];
-  if (!config.enabled) {
-    return {
-      error: createErrorResponse(
-        "PROVIDER_NOT_IMPLEMENTED",
-        `Provider '${input}' is not available yet.`,
-      ),
-    };
-  }
-
-  return { value: input };
-}
-
-function resolveDisplayClient(input: unknown) {
-  if (!isValidDisplayClient(input)) {
-    return {
-      error: createErrorResponse(
-        "UNSUPPORTED_DISPLAY_CLIENT",
-        `Display client '${String(input)}' is not supported.`,
-      ),
-    };
-  }
-
-  const config = DISPLAY_CLIENTS[input];
-  if (!config.enabled) {
-    return {
-      error: createErrorResponse(
-        "DISPLAY_CLIENT_NOT_IMPLEMENTED",
-        `Display client '${input}' is not available yet.`,
-      ),
-    };
-  }
-
-  return { value: input };
-}
-
-function resolveSizeProfile(input: unknown) {
-  if (!isValidSizeProfileId(input)) {
-    return {
-      error: createErrorResponse(
-        "UNSUPPORTED_SIZE_PROFILE",
-        `Size profile '${String(input)}' is not supported.`,
-      ),
-    };
-  }
-
-  return { value: input, profile: SIZE_PROFILES[input] };
 }
 
 function toProviderErrorResponse(err: unknown) {
@@ -151,14 +94,31 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
       }
 
-      const resolvedProvider = resolveProvider(existingWorkspace.provider);
-      if (resolvedProvider.error) return resolvedProvider.error;
+      const resolvedProvider = validateProvider(existingWorkspace.provider);
+      if (!resolvedProvider.ok) {
+        return createErrorResponse(
+          resolvedProvider.error.code,
+          resolvedProvider.error.message,
+        );
+      }
 
-      const resolvedDisplayClient = resolveDisplayClient(existingWorkspace.displayClient);
-      if (resolvedDisplayClient.error) return resolvedDisplayClient.error;
+      const resolvedDisplayClient = validateDisplayClient(
+        existingWorkspace.displayClient,
+      );
+      if (!resolvedDisplayClient.ok) {
+        return createErrorResponse(
+          resolvedDisplayClient.error.code,
+          resolvedDisplayClient.error.message,
+        );
+      }
 
-      const resolvedSize = resolveSizeProfile(existingWorkspace.sizeProfile);
-      if (resolvedSize.error) return resolvedSize.error;
+      const resolvedSize = validateSizeProfile(existingWorkspace.sizeProfile);
+      if (!resolvedSize.ok) {
+        return createErrorResponse(
+          resolvedSize.error.code,
+          resolvedSize.error.message,
+        );
+      }
 
       const snapshotId =
         explicitSnapshotId ||
@@ -179,8 +139,8 @@ export async function POST(req: Request) {
           sandbox = await driver.createWorkspaceRuntime({
             snapshotId,
             resources: {
-              vcpus: resolvedSize.profile.vcpu,
-              memoryGb: resolvedSize.profile.memoryGb,
+              vcpus: resolvedSize.value.vcpu,
+              memoryGb: resolvedSize.value.memoryGb,
             },
           });
         } catch (err) {
@@ -243,14 +203,29 @@ export async function POST(req: Request) {
     const displayClientInput = body.displayClient ?? "xpra";
     const sizeProfileInput = body.sizeProfile ?? "balanced_4c8g";
 
-    const resolvedProvider = resolveProvider(providerInput);
-    if (resolvedProvider.error) return resolvedProvider.error;
+    const resolvedProvider = validateProvider(providerInput);
+    if (!resolvedProvider.ok) {
+      return createErrorResponse(
+        resolvedProvider.error.code,
+        resolvedProvider.error.message,
+      );
+    }
 
-    const resolvedDisplayClient = resolveDisplayClient(displayClientInput);
-    if (resolvedDisplayClient.error) return resolvedDisplayClient.error;
+    const resolvedDisplayClient = validateDisplayClient(displayClientInput);
+    if (!resolvedDisplayClient.ok) {
+      return createErrorResponse(
+        resolvedDisplayClient.error.code,
+        resolvedDisplayClient.error.message,
+      );
+    }
 
-    const resolvedSize = resolveSizeProfile(sizeProfileInput);
-    if (resolvedSize.error) return resolvedSize.error;
+    const resolvedSize = validateSizeProfile(sizeProfileInput);
+    if (!resolvedSize.ok) {
+      return createErrorResponse(
+        resolvedSize.error.code,
+        resolvedSize.error.message,
+      );
+    }
 
     const randomIcon = WORKSPACE_ICON_NAMES[Math.floor(Math.random() * WORKSPACE_ICON_NAMES.length)];
     let wsName = name || generateWorkspaceName();
@@ -277,7 +252,7 @@ export async function POST(req: Request) {
           icon: icon || randomIcon,
           provider: resolvedProvider.value,
           displayClient: resolvedDisplayClient.value,
-          sizeProfile: resolvedSize.value,
+          sizeProfile: resolvedSize.value.id,
           status: "creating",
         })
         .returning(),
@@ -295,7 +270,7 @@ export async function POST(req: Request) {
       sandbox =
         resolvedProvider.value === "vercel" &&
         !explicitSnapshotId &&
-        resolvedSize.value === "balanced_4c8g"
+        resolvedSize.value.id === "balanced_4c8g"
           ? await claimWarmVM()
           : null;
 
@@ -304,8 +279,8 @@ export async function POST(req: Request) {
         sandbox = await driver.createWorkspaceRuntime({
           snapshotId,
           resources: {
-            vcpus: resolvedSize.profile.vcpu,
-            memoryGb: resolvedSize.profile.memoryGb,
+            vcpus: resolvedSize.value.vcpu,
+            memoryGb: resolvedSize.value.memoryGb,
           },
         });
       }
