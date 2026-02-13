@@ -89,11 +89,13 @@ export function getFontFamilyForPreset(preset: TerminalFontPreset): string {
     TERMINAL_FONT_PRESETS[0];
   if (typeof window === "undefined") return selected.fallback;
 
-  const fromBody = getComputedStyle(document.body)
+  const fromRoot = getComputedStyle(document.documentElement)
     .getPropertyValue(selected.cssVariable)
     .trim();
-  if (!fromBody) return selected.fallback;
-  return `"${fromBody}", ${selected.fallback}`;
+  if (!fromRoot) return selected.fallback;
+  const normalized = fromRoot.replace(/^['"]|['"]$/g, "").trim();
+  if (!normalized) return selected.fallback;
+  return `${normalized}, ${selected.fallback}`;
 }
 
 function asHexColor(value: unknown, fallback: string): string {

@@ -32,6 +32,10 @@ export function TerminalApp({
     () => normalizeTerminalSettings(settings ?? DEFAULT_TERMINAL_SETTINGS),
     [settings],
   );
+  const resolvedFontFamily = useMemo(
+    () => getFontFamilyForPreset(resolvedSettings.fontPreset),
+    [resolvedSettings.fontPreset],
+  );
 
   useEffect(() => {
     const container = containerRef.current;
@@ -60,11 +64,23 @@ export function TerminalApp({
         await ghostty.init();
         if (disposed) return;
 
+        // Canvas font rendering is sensitive to font-load timing. Ensure the
+        // selected font is ready before opening the terminal.
+        try {
+          const primaryFamily = resolvedFontFamily.split(",")[0]?.trim();
+          if (primaryFamily && "fonts" in document) {
+            await document.fonts.load(`16px ${primaryFamily}`);
+            await document.fonts.ready;
+          }
+        } catch {
+          // best-effort
+        }
+
         const t = new ghostty.Terminal({
           fontSize: resolvedSettings.fontSize,
           cursorBlink: resolvedSettings.cursorBlink,
           cursorStyle: resolvedSettings.cursorStyle,
-          fontFamily: getFontFamilyForPreset(resolvedSettings.fontPreset),
+          fontFamily: resolvedFontFamily,
           theme: {
             background: resolvedSettings.theme.background,
             foreground: resolvedSettings.theme.foreground,
@@ -241,7 +257,7 @@ export function TerminalApp({
       fitAddon?.dispose();
       term?.dispose();
     };
-  }, [servicesDomain, activeWorkspaceId, resolvedSettings]);
+  }, [servicesDomain, activeWorkspaceId, resolvedSettings, resolvedFontFamily]);
 
   if (!activeWorkspaceId || !sandbox) {
     return (
