@@ -10,6 +10,7 @@ import {
   getNoVncStartScript,
   getRdpStartScript,
   getVncStartScript,
+  getWebRtcStartScript,
   getXpraStartScript,
   getSandboxBridgeScript,
   SERVICE_DIR,
@@ -444,6 +445,10 @@ fi
           content: Buffer.from(getRdpStartScript()),
         },
         {
+          path: `${SERVICE_DIR}/webrtc-start.sh`,
+          content: Buffer.from(getWebRtcStartScript()),
+        },
+        {
           path: `${SERVICE_DIR}/sandbox-bridge.py`,
           content: Buffer.from(getSandboxBridgeScript()),
         },
@@ -464,6 +469,7 @@ fi
             `${SERVICE_DIR}/vnc-start.sh`,
             `${SERVICE_DIR}/kasmvnc-start.sh`,
             `${SERVICE_DIR}/rdp-start.sh`,
+            `${SERVICE_DIR}/webrtc-start.sh`,
           ],
         }),
         sandbox.runCommand({

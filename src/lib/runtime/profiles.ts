@@ -75,8 +75,7 @@ export const DISPLAY_CLIENTS: Record<DisplayClient, DisplayClientProfile> = {
   webrtc: {
     id: "webrtc",
     label: "WebRTC",
-    enabled: false,
-    reason: "Not yet implemented",
+    enabled: true,
   },
 };
 

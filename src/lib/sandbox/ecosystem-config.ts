@@ -788,6 +788,43 @@ wait "$HTTP_PID"
 `;
 }
 
+export function getWebRtcStartScript(): string {
+  return `#!/bin/bash
+set -euo pipefail
+
+SOCKET="${DBUS_SOCKET_PATH}"
+rm -f "$SOCKET"
+
+dbus-daemon --session --nofork --address="unix:path=$SOCKET" &
+DBUS_PID=$!
+
+for i in $(seq 1 20); do
+  [ -S "$SOCKET" ] && break
+  sleep 0.1
+done
+
+export DBUS_SESSION_BUS_ADDRESS="unix:path=$SOCKET"
+export GIO_USE_SYSTEMD=0
+
+# WebRTC profile: run Xpra in high-frame-rate video mode and expose
+# the browser client from the unified display port.
+exec xpra start ${XPRA_DISPLAY} \\
+  --bind-ws=0.0.0.0:${PORTS.DISPLAY} \\
+  --html=on \\
+  --sharing=yes \\
+  --no-daemon \\
+  --systemd-run=no \\
+  --notifications=yes \\
+  --webcam=no \\
+  --pulseaudio=no \\
+  --speaker=no \\
+  --microphone=no \\
+  --video=yes \\
+  --min-quality=40 \\
+  --min-speed=70
+`;
+}
+
 export function getDisplayStartScript(): string {
   return `#!/bin/bash
 set -euo pipefail
@@ -809,6 +846,9 @@ CLIENT="\${DISPLAY_CLIENT:-xpra}"
     ;;
   rdp)
     exec "${SERVICE_DIR}/rdp-start.sh"
+    ;;
+  webrtc)
+    exec "${SERVICE_DIR}/webrtc-start.sh"
     ;;
   *)
     echo "Unsupported DISPLAY_CLIENT: $CLIENT" >&2
