@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { Terminal, FitAddon } from "ghostty-web";
 import { useActiveSandbox } from "@/stores/workspace-store";
 import { NoWorkspacePlaceholder } from "@/components/apps/no-workspace-placeholder";
@@ -8,13 +8,32 @@ import {
   saveTerminalState,
   loadTerminalState,
 } from "@/lib/terminal/state-cache";
+import {
+  DEFAULT_TERMINAL_SETTINGS,
+  getFontFamilyForPreset,
+  normalizeTerminalSettings,
+  type TerminalSettings,
+} from "@/lib/terminal/config";
 
 const SERIALIZE_INTERVAL_MS = 5_000;
 
-export function TerminalApp() {
+export function TerminalApp({
+  className,
+  settings,
+}: {
+  className?: string;
+  settings?: TerminalSettings;
+  meta?: Record<string, unknown>;
+} = {}) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const terminalRef = useRef<Terminal | null>(null);
+  const fitAddonRef = useRef<FitAddon | null>(null);
   const { activeWorkspaceId, sandbox } = useActiveSandbox();
   const servicesDomain = sandbox?.domains.services;
+  const resolvedSettings = useMemo(
+    () => normalizeTerminalSettings(settings ?? DEFAULT_TERMINAL_SETTINGS),
+    [settings],
+  );
 
   useEffect(() => {
     const container = containerRef.current;
@@ -26,6 +45,8 @@ export function TerminalApp() {
     let fitAddon: FitAddon | undefined;
     let ws: WebSocket;
     let serializeInterval: ReturnType<typeof setInterval> | null = null;
+    let resizeObserver: ResizeObserver | null = null;
+    let refitTimer: ReturnType<typeof setTimeout> | null = null;
 
     // Defer setup to a requestAnimationFrame so that in React Strict Mode's
     // double-mount/unmount cycle the first invocation is cancelled before it
@@ -42,24 +63,54 @@ export function TerminalApp() {
         if (disposed) return;
 
         const t = new ghostty.Terminal({
-          fontSize: 14,
-          cursorBlink: true,
-          fontFamily: 'Monaco, Menlo, "Courier New", monospace',
+          fontSize: resolvedSettings.fontSize,
+          cursorBlink: resolvedSettings.cursorBlink,
+          cursorStyle: resolvedSettings.cursorStyle,
+          fontFamily: getFontFamilyForPreset(resolvedSettings.fontPreset),
           theme: {
-            background: "#0a0a0a",
-            foreground: "#ededed",
-            cursor: "#ffffff",
+            background: resolvedSettings.theme.background,
+            foreground: resolvedSettings.theme.foreground,
+            cursor: resolvedSettings.theme.cursor,
           },
         });
         term = t;
+        terminalRef.current = t;
 
         const fa = new ghostty.FitAddon();
         fitAddon = fa;
+        fitAddonRef.current = fa;
         t.loadAddon(fa);
 
         t.open(container);
+        const stretchCanvas = () => {
+          const canvases = container.querySelectorAll("canvas");
+          canvases.forEach((c) => {
+            const canvas = c as HTMLCanvasElement;
+            canvas.style.setProperty("width", "100%", "important");
+            canvas.style.setProperty("height", "100%", "important");
+            canvas.style.display = "block";
+            canvas.style.setProperty("position", "absolute");
+            canvas.style.setProperty("inset", "0");
+          });
+        };
+        // Fit immediately, then refit after layout settles (fonts/devtools panels
+        // can change metrics shortly after initial mount).
         fa.fit();
+        stretchCanvas();
+        refitTimer = setTimeout(() => {
+          if (!disposed) {
+            fa.fit();
+            stretchCanvas();
+          }
+        }, 100);
         fa.observeResize();
+        resizeObserver = new ResizeObserver(() => {
+          if (!disposed) {
+            fa.fit();
+            stretchCanvas();
+          }
+        });
+        resizeObserver.observe(container);
 
         if (disposed) {
           fa.dispose();
@@ -188,11 +239,34 @@ export function TerminalApp() {
       }
 
       if (serializeInterval) clearInterval(serializeInterval);
+      if (refitTimer) clearTimeout(refitTimer);
+      resizeObserver?.disconnect();
       ws?.close();
       fitAddon?.dispose();
       term?.dispose();
+      fitAddonRef.current = null;
+      terminalRef.current = null;
     };
   }, [servicesDomain, activeWorkspaceId]);
+
+  useEffect(() => {
+    const term = terminalRef.current;
+    const fitAddon = fitAddonRef.current;
+    if (!term) return;
+
+    term.options.fontFamily = getFontFamilyForPreset(resolvedSettings.fontPreset);
+    term.options.fontSize = resolvedSettings.fontSize;
+    term.options.cursorBlink = resolvedSettings.cursorBlink;
+    term.options.cursorStyle = resolvedSettings.cursorStyle;
+    term.options.theme = {
+      ...term.options.theme,
+      background: resolvedSettings.theme.background,
+      foreground: resolvedSettings.theme.foreground,
+      cursor: resolvedSettings.theme.cursor,
+    };
+
+    fitAddon?.fit();
+  }, [resolvedSettings]);
 
   if (!activeWorkspaceId || !sandbox) {
     return (
@@ -203,7 +277,7 @@ export function TerminalApp() {
   return (
     <div
       ref={containerRef}
-      className="h-full w-full bg-background-100"
+      className={className ?? "h-full w-full overflow-hidden bg-black"}
       role="application"
       aria-label="Terminal"
     />

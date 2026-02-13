@@ -45,6 +45,15 @@ import { slugify } from "@/lib/workspace-slug";
 import { useGlobalKeybinds } from "@/lib/keyboard/use-global-keybinds";
 import { WindowSwitcher } from "@/components/desktop/WindowSwitcher";
 import type { SandboxInfo } from "@/types/sandbox";
+import { TerminalApp } from "@/components/apps/terminal/TerminalApp";
+import { Settings2 } from "lucide-react";
+import { TerminalSettingsDialog } from "@/components/apps/terminal/TerminalSettingsDialog";
+import {
+  DEFAULT_TERMINAL_SETTINGS,
+  loadSandboxTerminalSettings,
+  saveSandboxTerminalSettings,
+  type TerminalSettings,
+} from "@/lib/terminal/config";
 
 interface DesktopShellProps {
   user: { id: string; email: string | null; name: string | null };
@@ -171,8 +180,10 @@ export function DesktopShell({
   const activeWorkspaceFromStore = useWorkspaceStore((s) =>
     s.workspaces.find((w) => w.id === s.activeWorkspaceId),
   );
-  const activeWorkspaceDisplayClient = activeWorkspaceFromStore?.displayClient ?? "xpra";
-  const activeWorkspaceExperience = activeWorkspaceFromStore?.experience ?? "gui";
+  const activeWorkspaceDisplayClient =
+    activeWorkspaceFromStore?.displayClient ?? "xpra";
+  const activeWorkspaceExperience =
+    activeWorkspaceFromStore?.experience ?? "gui";
   const showRemoteDisplay =
     activeWorkspaceExperience === "gui" &&
     (activeWorkspaceDisplayClient === "novnc" ||
@@ -329,6 +340,12 @@ export function DesktopShell({
   const [shutdownDialogOpen, setShutdownDialogOpen] = useState(false);
   const [shutdownWithSnapshot, setShutdownWithSnapshot] = useState(false);
   const [shutdownWithoutSnapshot, setShutdownWithoutSnapshot] = useState(false);
+  const [cliSettingsOpen, setCliSettingsOpen] = useState(false);
+  const [cliTerminalSettings, setCliTerminalSettings] = useState<TerminalSettings>(
+    DEFAULT_TERMINAL_SETTINGS,
+  );
+  const cliActiveSandboxId =
+    activeWorkspaceId ? sandboxes[activeWorkspaceId]?.sandboxId ?? null : null;
 
   useEffect(() => {
     if (workspacesLoading || bootstrappedRef.current) return;
@@ -389,6 +406,32 @@ export function DesktopShell({
     strictTargetRoute,
     router,
   ]);
+
+  useEffect(() => {
+    if (!(strictTargetRoute && activeWorkspaceExperience === "cli")) return;
+    if (!cliActiveSandboxId) {
+      setCliTerminalSettings(DEFAULT_TERMINAL_SETTINGS);
+      return;
+    }
+    setCliTerminalSettings(loadSandboxTerminalSettings(cliActiveSandboxId));
+  }, [strictTargetRoute, activeWorkspaceExperience, cliActiveSandboxId]);
+
+  const handleCliTerminalSettingsChange = useCallback(
+    (next: TerminalSettings) => {
+      setCliTerminalSettings(next);
+      if (cliActiveSandboxId) {
+        saveSandboxTerminalSettings(cliActiveSandboxId, next);
+      }
+    },
+    [cliActiveSandboxId],
+  );
+
+  const handleCliTerminalSettingsReset = useCallback(() => {
+    setCliTerminalSettings(DEFAULT_TERMINAL_SETTINGS);
+    if (cliActiveSandboxId) {
+      saveSandboxTerminalSettings(cliActiveSandboxId, DEFAULT_TERMINAL_SETTINGS);
+    }
+  }, [cliActiveSandboxId]);
 
   // Strict slug route behavior: when store marks workspace non-active (for example
   // max-lifetime reached), immediately go back to the hub.
@@ -463,6 +506,9 @@ export function DesktopShell({
   // If no windows are persisted, auto-open a Files window as the welcome screen
   useEffect(() => {
     if (!activeWorkspaceId || !windowStateData) return;
+    if (strictTargetRoute && activeWorkspaceFromStore?.experience === "cli") {
+      return;
+    }
     if (loadedWorkspacesRef.current.has(activeWorkspaceId)) return;
     loadedWorkspacesRef.current.add(activeWorkspaceId);
 
@@ -492,7 +538,12 @@ export function DesktopShell({
             },
       );
     }
-  }, [activeWorkspaceId, windowStateData, activeWorkspaceFromStore?.experience]);
+  }, [
+    activeWorkspaceId,
+    windowStateData,
+    activeWorkspaceFromStore?.experience,
+    strictTargetRoute,
+  ]);
 
   // ---- Hydrate sandbox info for non-active workspaces ----
   const hydratedRef = useRef<Set<string>>(new Set());
@@ -571,6 +622,144 @@ export function DesktopShell({
     );
   }
 
+  if (strictTargetRoute && activeWorkspaceExperience === "cli") {
+    return (
+      <div className="fixed inset-0 overflow-hidden bg-black">
+        <div className="pointer-events-none fixed right-3 top-3 z-[9500] flex gap-2 rounded-md bg-black/40 p-2 backdrop-blur-sm">
+          <Button
+            size="sm"
+            variant="secondary"
+            className="pointer-events-auto"
+            onClick={() => router.push("/desktop")}
+          >
+            Back to Workspaces
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            className="pointer-events-auto"
+            onClick={() => setCliSettingsOpen(true)}
+          >
+            <Settings2 className="mr-1.5 size-3.5" />
+            Settings
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            className="pointer-events-auto"
+            disabled={!activeWorkspaceId || returningToHub}
+            onClick={() => setShutdownDialogOpen(true)}
+          >
+            {returningToHub ? <Spinner className="size-3.5" /> : "Shutdown VM"}
+          </Button>
+        </div>
+        <AlertDialog
+          open={shutdownDialogOpen}
+          onOpenChange={(open) => {
+            if (!open) {
+              setShutdownDialogOpen(false);
+              setShutdownWithSnapshot(false);
+              setShutdownWithoutSnapshot(false);
+            }
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Shutdown VM</AlertDialogTitle>
+              <AlertDialogDescription>
+                Choose whether to save a snapshot before shutdown.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter className="flex-row justify-end">
+              <AlertDialogCancel
+                disabled={
+                  shutdownWithSnapshot ||
+                  shutdownWithoutSnapshot ||
+                  returningToHub
+                }
+              >
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                variant="outline"
+                disabled={
+                  !activeWorkspaceId ||
+                  shutdownWithSnapshot ||
+                  shutdownWithoutSnapshot ||
+                  returningToHub
+                }
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (!activeWorkspaceId) return;
+                  setShutdownWithoutSnapshot(true);
+                  setReturningToHub(true);
+                  void stopWorkspace(activeWorkspaceId, {
+                    createSnapshot: false,
+                  }).finally(() => {
+                    router.replace("/desktop");
+                    setShutdownDialogOpen(false);
+                    setShutdownWithSnapshot(false);
+                    setShutdownWithoutSnapshot(false);
+                    setReturningToHub(false);
+                  });
+                }}
+              >
+                {shutdownWithoutSnapshot ? (
+                  <Spinner className="size-3.5" />
+                ) : (
+                  "Without Snapshot"
+                )}
+              </AlertDialogAction>
+              <AlertDialogAction
+                disabled={
+                  !activeWorkspaceId ||
+                  shutdownWithSnapshot ||
+                  shutdownWithoutSnapshot ||
+                  returningToHub
+                }
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (!activeWorkspaceId) return;
+                  setShutdownWithSnapshot(true);
+                  setReturningToHub(true);
+                  void stopWorkspace(activeWorkspaceId, {
+                    createSnapshot: true,
+                  }).finally(() => {
+                    router.replace("/desktop");
+                    setShutdownDialogOpen(false);
+                    setShutdownWithSnapshot(false);
+                    setShutdownWithoutSnapshot(false);
+                    setReturningToHub(false);
+                  });
+                }}
+              >
+                {shutdownWithSnapshot ? (
+                  <Spinner className="size-3.5" />
+                ) : (
+                  "With Snapshot"
+                )}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+        <div className="absolute inset-0 overflow-hidden">
+          <TerminalApp
+            className="absolute inset-0 overflow-hidden"
+            settings={cliTerminalSettings}
+          />
+        </div>
+        <TerminalSettingsDialog
+          open={cliSettingsOpen}
+          onOpenChange={setCliSettingsOpen}
+          settings={cliTerminalSettings}
+          onChange={handleCliTerminalSettingsChange}
+          onReset={handleCliTerminalSettingsReset}
+        />
+        <WorkspaceStatusToast />
+      </div>
+    );
+  }
+
   return (
     <div className="h-screen w-screen overflow-hidden">
       {strictTargetRoute && (
@@ -613,59 +802,86 @@ export function DesktopShell({
           </AlertDialogHeader>
           <AlertDialogFooter className="flex-row justify-end">
             <AlertDialogCancel
-              disabled={shutdownWithSnapshot || shutdownWithoutSnapshot || returningToHub}
+              disabled={
+                shutdownWithSnapshot ||
+                shutdownWithoutSnapshot ||
+                returningToHub
+              }
             >
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
               variant="outline"
-              disabled={!activeWorkspaceId || shutdownWithSnapshot || shutdownWithoutSnapshot || returningToHub}
+              disabled={
+                !activeWorkspaceId ||
+                shutdownWithSnapshot ||
+                shutdownWithoutSnapshot ||
+                returningToHub
+              }
               onClick={(e) => {
                 e.preventDefault();
                 if (!activeWorkspaceId) return;
                 setShutdownWithoutSnapshot(true);
                 setReturningToHub(true);
-                void stopWorkspace(activeWorkspaceId, { createSnapshot: false })
-                  .finally(() => {
-                    router.replace("/desktop");
-                    setShutdownDialogOpen(false);
-                    setShutdownWithSnapshot(false);
-                    setShutdownWithoutSnapshot(false);
-                    setReturningToHub(false);
-                  });
+                void stopWorkspace(activeWorkspaceId, {
+                  createSnapshot: false,
+                }).finally(() => {
+                  router.replace("/desktop");
+                  setShutdownDialogOpen(false);
+                  setShutdownWithSnapshot(false);
+                  setShutdownWithoutSnapshot(false);
+                  setReturningToHub(false);
+                });
               }}
             >
-              {shutdownWithoutSnapshot ? <Spinner className="size-3.5" /> : "Without Snapshot"}
+              {shutdownWithoutSnapshot ? (
+                <Spinner className="size-3.5" />
+              ) : (
+                "Without Snapshot"
+              )}
             </AlertDialogAction>
             <AlertDialogAction
-              disabled={!activeWorkspaceId || shutdownWithSnapshot || shutdownWithoutSnapshot || returningToHub}
+              disabled={
+                !activeWorkspaceId ||
+                shutdownWithSnapshot ||
+                shutdownWithoutSnapshot ||
+                returningToHub
+              }
               onClick={(e) => {
                 e.preventDefault();
                 if (!activeWorkspaceId) return;
                 setShutdownWithSnapshot(true);
                 setReturningToHub(true);
-                void stopWorkspace(activeWorkspaceId, { createSnapshot: true })
-                  .finally(() => {
-                    router.replace("/desktop");
-                    setShutdownDialogOpen(false);
-                    setShutdownWithSnapshot(false);
-                    setShutdownWithoutSnapshot(false);
-                    setReturningToHub(false);
-                  });
+                void stopWorkspace(activeWorkspaceId, {
+                  createSnapshot: true,
+                }).finally(() => {
+                  router.replace("/desktop");
+                  setShutdownDialogOpen(false);
+                  setShutdownWithSnapshot(false);
+                  setShutdownWithoutSnapshot(false);
+                  setReturningToHub(false);
+                });
               }}
             >
-              {shutdownWithSnapshot ? <Spinner className="size-3.5" /> : "With Snapshot"}
+              {shutdownWithSnapshot ? (
+                <Spinner className="size-3.5" />
+              ) : (
+                "With Snapshot"
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
       <DesktopBackground />
-      {activeWorkspaceExperience === "gui" && activeWorkspaceDisplayClient === "xpra" ? (
+      {activeWorkspaceExperience === "gui" &&
+      activeWorkspaceDisplayClient === "xpra" ? (
         <XpraConnector />
       ) : showRemoteDisplay ? (
         <RemoteDisplayClient />
       ) : activeWorkspaceExperience === "gui" ? (
-        <UnsupportedDisplayClientNote displayClient={activeWorkspaceDisplayClient} />
+        <UnsupportedDisplayClientNote
+          displayClient={activeWorkspaceDisplayClient}
+        />
       ) : null}
       {(activeWorkspaceExperience === "cli" || !showRemoteDisplay) && (
         <>
