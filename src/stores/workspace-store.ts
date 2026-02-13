@@ -1,8 +1,21 @@
 import { create } from "zustand";
 import type { StoreApi } from "zustand";
-import type { Workspace } from "@/types/workspace";
+import type {
+  DisplayClient,
+  ProviderId,
+  SizeProfileId,
+  Workspace,
+} from "@/types/workspace";
 import type { SandboxInfo } from "@/types/sandbox";
 import { mutateWorkspaces, mutateWorkspace } from "@/lib/hooks/use-swr-hooks";
+
+export interface CreateWorkspaceInput {
+  name?: string;
+  icon?: string;
+  provider?: ProviderId;
+  displayClient?: DisplayClient;
+  sizeProfile?: SizeProfileId;
+}
 
 interface WorkspaceStore {
   workspaces: Workspace[];
@@ -17,7 +30,7 @@ interface WorkspaceStore {
   removeSandboxInfo: (workspaceId: string) => void;
   /** Mark a workspace as stopped/sandbox-lost in the client store (removes sandbox info + sets status to stopped). */
   markSandboxLost: (workspaceId: string) => void;
-  createWorkspace: (name?: string) => Promise<Workspace>;
+  createWorkspace: (input?: CreateWorkspaceInput) => Promise<Workspace>;
   updateWorkspace: (id: string, updates: { name?: string; icon?: string; background?: string | null }) => Promise<void>;
   stopWorkspace: (
     id: string,
@@ -174,13 +187,19 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     }));
   },
 
-  createWorkspace: async (name) => {
+  createWorkspace: async (input) => {
     set({ creatingStatus: "Provisioning sandbox...", creatingError: null });
     try {
       const res = await fetch("/api/sandbox/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({
+          name: input?.name,
+          icon: input?.icon,
+          provider: input?.provider,
+          displayClient: input?.displayClient,
+          sizeProfile: input?.sizeProfile,
+        }),
       });
       if (!res.ok) {
         const { error } = await res.json();
