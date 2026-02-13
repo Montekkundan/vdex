@@ -13,7 +13,7 @@ import {
   prunePool,
 } from "@/lib/sandbox/warm-pool";
 
-export const maxDuration = 600;
+export const maxDuration = 300;
 
 export async function GET() {
   const session = await getSession();

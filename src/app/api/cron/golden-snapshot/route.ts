@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { buildGoldenSnapshot } from "@/lib/sandbox/build-golden-snapshot";
 
-export const maxDuration = 600;
+export const maxDuration = 300;
 
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
