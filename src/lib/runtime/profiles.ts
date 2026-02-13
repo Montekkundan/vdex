@@ -55,8 +55,7 @@ export const DISPLAY_CLIENTS: Record<DisplayClient, DisplayClientProfile> = {
   rdp: {
     id: "rdp",
     label: "RDP",
-    enabled: false,
-    reason: "Not yet implemented",
+    enabled: true,
   },
   vnc: {
     id: "vnc",

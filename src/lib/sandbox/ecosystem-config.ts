@@ -7,6 +7,7 @@ export const SERVICE_DIR = "/opt/sandcastle";
 export const XPRA_DISPLAY = ":10";
 export const VNC_DISPLAY = ":11";
 export const KASM_DISPLAY = ":12";
+export const RDP_DISPLAY = ":13";
 
 // Well-known D-Bus session bus socket path used by all sandcastle processes.
 // dbus-daemon is started by the Xpra wrapper and writes its address here.
@@ -722,6 +723,71 @@ wait "$WS_PID"
 `;
 }
 
+export function getRdpStartScript(): string {
+  return `#!/bin/bash
+set -euo pipefail
+
+SOCKET="${DBUS_SOCKET_PATH}"
+rm -f "$SOCKET"
+
+dbus-daemon --session --nofork --address="unix:path=$SOCKET" &
+DBUS_PID=$!
+
+for i in $(seq 1 20); do
+  [ -S "$SOCKET" ] && break
+  sleep 0.1
+done
+
+export DBUS_SESSION_BUS_ADDRESS="unix:path=$SOCKET"
+export GIO_USE_SYSTEMD=0
+export DISPLAY=${RDP_DISPLAY}
+
+cleanup() {
+  kill "$HTTP_PID" "$XRDP_PID" "$SESMAN_PID" "$DBUS_PID" 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+
+xrdp-sesman --nodaemon &
+SESMAN_PID=$!
+
+xrdp --nodaemon &
+XRDP_PID=$!
+
+WEB_ROOT="/tmp/rdp-display-web"
+mkdir -p "$WEB_ROOT"
+cat > "$WEB_ROOT/index.html" << 'EOF'
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RDP Stack Active</title>
+    <style>
+      body { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; background:#0b0f17; color:#e6ecff; margin:0; padding:40px; }
+      .card { max-width:760px; margin:0 auto; background:#111827; border:1px solid #334155; border-radius:12px; padding:24px; }
+      h1 { margin:0 0 12px; font-size:24px; }
+      p { margin:8px 0; line-height:1.6; color:#cbd5e1; }
+      code { background:#0f172a; padding:2px 6px; border-radius:6px; color:#f8fafc; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>RDP stack is running</h1>
+      <p>This workspace was provisioned with the <strong>RDP</strong> display stack.</p>
+      <p>The VM runs <code>xrdp</code> and <code>xrdp-sesman</code>. Use an RDP client against the sandbox runtime when a raw TCP route is available.</p>
+      <p>This web endpoint exists to keep the unified display domain healthy for workspace orchestration.</p>
+    </div>
+  </body>
+</html>
+EOF
+
+python3 -m http.server ${PORTS.DISPLAY} --directory "$WEB_ROOT" &
+HTTP_PID=$!
+
+wait "$HTTP_PID"
+`;
+}
+
 export function getDisplayStartScript(): string {
   return `#!/bin/bash
 set -euo pipefail
@@ -740,6 +806,9 @@ CLIENT="\${DISPLAY_CLIENT:-xpra}"
     ;;
   kasmvnc)
     exec "${SERVICE_DIR}/kasmvnc-start.sh"
+    ;;
+  rdp)
+    exec "${SERVICE_DIR}/rdp-start.sh"
     ;;
   *)
     echo "Unsupported DISPLAY_CLIENT: $CLIENT" >&2

@@ -8,6 +8,7 @@ import {
   getEcosystemConfig,
   getKasmVncStartScript,
   getNoVncStartScript,
+  getRdpStartScript,
   getVncStartScript,
   getXpraStartScript,
   getSandboxBridgeScript,
@@ -196,6 +197,7 @@ async function bootstrapSandbox(
     { path: `${SERVICE_DIR}/novnc-start.sh`, content: Buffer.from(getNoVncStartScript()) },
     { path: `${SERVICE_DIR}/vnc-start.sh`, content: Buffer.from(getVncStartScript()) },
     { path: `${SERVICE_DIR}/kasmvnc-start.sh`, content: Buffer.from(getKasmVncStartScript()) },
+    { path: `${SERVICE_DIR}/rdp-start.sh`, content: Buffer.from(getRdpStartScript()) },
     { path: `${SERVICE_DIR}/sandbox-bridge.py`, content: Buffer.from(getSandboxBridgeScript()) },
   ]);
 
@@ -204,7 +206,7 @@ async function bootstrapSandbox(
     cmd: "bash",
     args: [
       "-c",
-      `cd ${SERVICE_DIR} && npm install ws && npm install -g pm2 && chmod +x ${SERVICE_DIR}/display-start.sh ${SERVICE_DIR}/xpra-start.sh ${SERVICE_DIR}/novnc-start.sh ${SERVICE_DIR}/vnc-start.sh ${SERVICE_DIR}/kasmvnc-start.sh ${SERVICE_DIR}/sandbox-bridge.py`,
+      `cd ${SERVICE_DIR} && npm install ws && npm install -g pm2 && chmod +x ${SERVICE_DIR}/display-start.sh ${SERVICE_DIR}/xpra-start.sh ${SERVICE_DIR}/novnc-start.sh ${SERVICE_DIR}/vnc-start.sh ${SERVICE_DIR}/kasmvnc-start.sh ${SERVICE_DIR}/rdp-start.sh ${SERVICE_DIR}/sandbox-bridge.py`,
     ],
   });
 

@@ -8,6 +8,7 @@ import {
   getEcosystemConfig,
   getKasmVncStartScript,
   getNoVncStartScript,
+  getRdpStartScript,
   getVncStartScript,
   getXpraStartScript,
   getSandboxBridgeScript,
@@ -303,7 +304,7 @@ fi
         [
           "sudo dnf install -y spal-release",
             "sudo dnf install -y vim-enhanced htop wget jq tree tmux ripgrep cpio" +
-            " xorg-x11-server-Xvfb xorg-x11-server-Xorg xorg-x11-drv-dummy mesa-dri-drivers dbus-x11 xdg-utils xorg-x11-fonts-misc xorg-x11-fonts-Type1 xorg-x11-fonts-100dpi xeyes x11vnc novnc python3-websockify" +
+            " xorg-x11-server-Xvfb xorg-x11-server-Xorg xorg-x11-drv-dummy mesa-dri-drivers dbus-x11 xdg-utils xorg-x11-fonts-misc xorg-x11-fonts-Type1 xorg-x11-fonts-100dpi xeyes x11vnc novnc python3-websockify xrdp" +
             " mesa-libEGL mesa-libGLES mesa-libgbm libglvnd-egl libglvnd-gles" +
             " gstreamer1 gstreamer1-plugins-base gstreamer1-plugins-good" +
             " firefox nautilus gnome-calculator gnome-text-editor gimp" +
@@ -439,6 +440,10 @@ fi
           content: Buffer.from(getKasmVncStartScript()),
         },
         {
+          path: `${SERVICE_DIR}/rdp-start.sh`,
+          content: Buffer.from(getRdpStartScript()),
+        },
+        {
           path: `${SERVICE_DIR}/sandbox-bridge.py`,
           content: Buffer.from(getSandboxBridgeScript()),
         },
@@ -458,6 +463,7 @@ fi
             `${SERVICE_DIR}/novnc-start.sh`,
             `${SERVICE_DIR}/vnc-start.sh`,
             `${SERVICE_DIR}/kasmvnc-start.sh`,
+            `${SERVICE_DIR}/rdp-start.sh`,
           ],
         }),
         sandbox.runCommand({

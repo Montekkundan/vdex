@@ -175,7 +175,8 @@ export function DesktopShell({
   const showRemoteDisplay =
     activeWorkspaceDisplayClient === "novnc" ||
     activeWorkspaceDisplayClient === "vnc" ||
-    activeWorkspaceDisplayClient === "kasmvnc";
+    activeWorkspaceDisplayClient === "kasmvnc" ||
+    activeWorkspaceDisplayClient === "rdp";
   const setWorkspaces = useWorkspaceStore((s) => s.setWorkspaces);
   const setActiveWorkspace = useWorkspaceStore((s) => s.setActiveWorkspace);
   const setSandboxInfo = useWorkspaceStore((s) => s.setSandboxInfo);
