@@ -5,6 +5,7 @@ export const SERVICE_DIR = "/opt/sandcastle";
 
 // Xpra display number - use :10 to avoid low display warnings
 export const XPRA_DISPLAY = ":10";
+export const VNC_DISPLAY = ":11";
 
 // Well-known D-Bus session bus socket path used by all sandcastle processes.
 // dbus-daemon is started by the Xpra wrapper and writes its address here.
@@ -15,7 +16,7 @@ export const DBUS_SOCKET_PATH = "/tmp/sandcastle-dbus";
 export const BRIDGE_STATE_PATH = "/tmp/sandcastle-bridge.json";
 
 export function getEcosystemConfig(): string {
-  const xpraStartScript = `${SERVICE_DIR}/xpra-start.sh`;
+  const displayStartScript = `${SERVICE_DIR}/display-start.sh`;
   const sandboxBridgeScript = `${SERVICE_DIR}/sandbox-bridge.py`;
 
   return `const HOME = process.env.HOME || require("os").homedir();
@@ -43,14 +44,15 @@ module.exports = {
       max_restarts: 10,
     },
     {
-      name: "xpra",
-      script: "${xpraStartScript}",
+      name: "display",
+      script: "${displayStartScript}",
       interpreter: "bash",
       cwd: HOME,
       watch: false,
       autorestart: true,
       max_restarts: 5,
       env: {
+        DISPLAY_CLIENT: process.env.DISPLAY_CLIENT || "xpra",
         DBUS_SESSION_BUS_ADDRESS: "unix:path=${DBUS_SOCKET_PATH}",
       },
     },
@@ -590,3 +592,61 @@ exec xpra start ${XPRA_DISPLAY} \\
 `;
 }
 
+export function getNoVncStartScript(): string {
+  return `#!/bin/bash
+set -euo pipefail
+
+SOCKET="${DBUS_SOCKET_PATH}"
+rm -f "$SOCKET"
+
+dbus-daemon --session --nofork --address="unix:path=$SOCKET" &
+DBUS_PID=$!
+
+for i in $(seq 1 20); do
+  [ -S "$SOCKET" ] && break
+  sleep 0.1
+done
+
+export DBUS_SESSION_BUS_ADDRESS="unix:path=$SOCKET"
+export GIO_USE_SYSTEMD=0
+export DISPLAY=${VNC_DISPLAY}
+
+cleanup() {
+  kill "$VNC_PID" "$WS_PID" "$XVFB_PID" "$DBUS_PID" 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+
+Xvfb ${VNC_DISPLAY} -screen 0 1920x1080x24 -nolisten tcp &
+XVFB_PID=$!
+sleep 0.5
+
+x11vnc -display ${VNC_DISPLAY} -forever -shared -rfbport 5901 -nopw -localhost &
+VNC_PID=$!
+
+websockify --web=/usr/share/novnc ${PORTS.DISPLAY} localhost:5901 &
+WS_PID=$!
+
+wait "$WS_PID"
+`;
+}
+
+export function getDisplayStartScript(): string {
+  return `#!/bin/bash
+set -euo pipefail
+
+CLIENT="\${DISPLAY_CLIENT:-xpra}"
+
+case "$CLIENT" in
+  xpra)
+    exec "${SERVICE_DIR}/xpra-start.sh"
+    ;;
+  novnc)
+    exec "${SERVICE_DIR}/novnc-start.sh"
+    ;;
+  *)
+    echo "Unsupported DISPLAY_CLIENT: $CLIENT" >&2
+    exit 1
+    ;;
+esac
+`;
+}

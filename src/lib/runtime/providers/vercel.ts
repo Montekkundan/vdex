@@ -10,8 +10,8 @@ import type { ProviderDriver } from "@/lib/runtime/providers/types";
 
 export const vercelProviderDriver: ProviderDriver = {
   id: "vercel",
-  async createWorkspaceRuntime({ snapshotId, resources }) {
-    return createSandbox(snapshotId, resources);
+  async createWorkspaceRuntime({ snapshotId, resources, displayClient }) {
+    return createSandbox(snapshotId, resources, displayClient);
   },
   async getRuntime(sandboxId) {
     return getSandbox(sandboxId);

@@ -129,6 +129,7 @@ export async function POST(req: Request) {
       let sandbox =
         resolvedProvider.value === "vercel" &&
         !explicitSnapshotId &&
+        resolvedDisplayClient.value === "xpra" &&
         existingWorkspace.sizeProfile === "balanced_4c8g"
           ? await claimWarmVM()
           : null;
@@ -142,6 +143,7 @@ export async function POST(req: Request) {
               vcpus: resolvedSize.value.vcpu,
               memoryGb: resolvedSize.value.memoryGb,
             },
+            displayClient: resolvedDisplayClient.value,
           });
         } catch (err) {
           const providerError = toProviderErrorResponse(err);
@@ -270,6 +272,7 @@ export async function POST(req: Request) {
       sandbox =
         resolvedProvider.value === "vercel" &&
         !explicitSnapshotId &&
+        resolvedDisplayClient.value === "xpra" &&
         resolvedSize.value.id === "balanced_4c8g"
           ? await claimWarmVM()
           : null;
@@ -282,6 +285,7 @@ export async function POST(req: Request) {
             vcpus: resolvedSize.value.vcpu,
             memoryGb: resolvedSize.value.memoryGb,
           },
+          displayClient: resolvedDisplayClient.value,
         });
       }
     } catch (provisionErr) {

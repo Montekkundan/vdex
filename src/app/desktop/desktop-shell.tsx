@@ -10,6 +10,10 @@ import { DesktopBackground } from "@/components/desktop/DesktopBackground";
 import { WindowRenderer } from "@/components/desktop/WindowRenderer";
 import { Taskbar } from "@/components/taskbar/Taskbar";
 import { XpraConnector } from "@/components/apps/xpra-window/XpraConnector";
+import {
+  RemoteDisplayClient,
+  UnsupportedDisplayClientNote,
+} from "@/components/display/RemoteDisplayClient";
 import { NotificationToasts } from "@/components/notifications/NotificationToasts";
 import { NotificationCenter } from "@/components/notifications/NotificationCenter";
 import { useSyncSandboxTheme } from "@/lib/hooks/use-sync-sandbox-theme";
@@ -168,6 +172,8 @@ export function DesktopShell({
     s.workspaces.find((w) => w.id === s.activeWorkspaceId),
   );
   const activeWorkspaceDisplayClient = activeWorkspaceFromStore?.displayClient ?? "xpra";
+  const showRemoteDisplay =
+    activeWorkspaceDisplayClient === "novnc";
   const setWorkspaces = useWorkspaceStore((s) => s.setWorkspaces);
   const setActiveWorkspace = useWorkspaceStore((s) => s.setActiveWorkspace);
   const setSandboxInfo = useWorkspaceStore((s) => s.setSandboxInfo);
@@ -640,23 +646,18 @@ export function DesktopShell({
       <DesktopBackground />
       {activeWorkspaceDisplayClient === "xpra" ? (
         <XpraConnector />
+      ) : showRemoteDisplay ? (
+        <RemoteDisplayClient />
       ) : (
-        <div className="pointer-events-none fixed inset-x-0 top-20 z-[9400] flex justify-center px-4">
-          <div className="pointer-events-auto max-w-xl">
-            <Note type="warning">
-              <p className="text-copy-13 font-medium text-gray-1000">
-                Display client &quot;{activeWorkspaceDisplayClient}&quot; is not implemented yet.
-              </p>
-              <p className="mt-1 text-copy-13 text-gray-900">
-                Switch this workspace to Xpra or create a new workspace with Xpra.
-              </p>
-            </Note>
-          </div>
-        </div>
+        <UnsupportedDisplayClientNote displayClient={activeWorkspaceDisplayClient} />
       )}
-      <Desktop />
-      <WindowRenderer />
-      <Taskbar launcherToggle={launcherToggle} />
+      {!showRemoteDisplay && (
+        <>
+          <Desktop />
+          <WindowRenderer />
+          <Taskbar launcherToggle={launcherToggle} />
+        </>
+      )}
       <NotificationToasts />
       <NotificationCenter />
       <WorkspaceStatusToast />

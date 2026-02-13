@@ -4,7 +4,9 @@ import { setGoldenSnapshotId } from "./golden-snapshot";
 import { SANDBOX_PORTS } from "./ports";
 import { getServiceCode } from "./sandbox-services";
 import {
+  getDisplayStartScript,
   getEcosystemConfig,
+  getNoVncStartScript,
   getXpraStartScript,
   getSandboxBridgeScript,
   SERVICE_DIR,
@@ -298,8 +300,8 @@ fi
         "SPAL repo + system tools + X11/GTK4 deps + desktop apps",
         [
           "sudo dnf install -y spal-release",
-          "sudo dnf install -y vim-enhanced htop wget jq tree tmux ripgrep cpio" +
-            " xorg-x11-server-Xvfb xorg-x11-server-Xorg xorg-x11-drv-dummy mesa-dri-drivers dbus-x11 xdg-utils xorg-x11-fonts-misc xorg-x11-fonts-Type1 xorg-x11-fonts-100dpi xeyes" +
+            "sudo dnf install -y vim-enhanced htop wget jq tree tmux ripgrep cpio" +
+            " xorg-x11-server-Xvfb xorg-x11-server-Xorg xorg-x11-drv-dummy mesa-dri-drivers dbus-x11 xdg-utils xorg-x11-fonts-misc xorg-x11-fonts-Type1 xorg-x11-fonts-100dpi xeyes x11vnc novnc python3-websockify" +
             " mesa-libEGL mesa-libGLES mesa-libgbm libglvnd-egl libglvnd-gles" +
             " gstreamer1 gstreamer1-plugins-base gstreamer1-plugins-good" +
             " firefox nautilus gnome-calculator gnome-text-editor gimp" +
@@ -415,8 +417,16 @@ fi
           content: Buffer.from(getEcosystemConfig()),
         },
         {
+          path: `${SERVICE_DIR}/display-start.sh`,
+          content: Buffer.from(getDisplayStartScript()),
+        },
+        {
           path: `${SERVICE_DIR}/xpra-start.sh`,
           content: Buffer.from(getXpraStartScript()),
+        },
+        {
+          path: `${SERVICE_DIR}/novnc-start.sh`,
+          content: Buffer.from(getNoVncStartScript()),
         },
         {
           path: `${SERVICE_DIR}/sandbox-bridge.py`,
@@ -431,7 +441,12 @@ fi
         }),
         sandbox.runCommand({
           cmd: "chmod",
-          args: ["+x", `${SERVICE_DIR}/xpra-start.sh`],
+          args: [
+            "+x",
+            `${SERVICE_DIR}/display-start.sh`,
+            `${SERVICE_DIR}/xpra-start.sh`,
+            `${SERVICE_DIR}/novnc-start.sh`,
+          ],
         }),
         sandbox.runCommand({
           cmd: "chmod",
