@@ -36,6 +36,7 @@
     "dotenv": "^17.2.4",
     "drizzle-orm": "^0.45.1",
     "embla-carousel-react": "^8.6.0",
+    "geist": "^1.7.0",
     "ghostty-web": "^0.4.0",
     "input-otp": "^1.4.2",
     "lucide-react": "^0.563.0",
