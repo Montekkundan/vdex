@@ -1,16 +1,15 @@
 import type { Metadata } from "next";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
-import {
-  GeistPixelSquare,
-  GeistPixelGrid,
-  GeistPixelCircle,
-  GeistPixelTriangle,
-  GeistPixelLine,
-} from "geist/font/pixel";
+import { JetBrains_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/ui/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-jetbrains-mono",
+});
 
 export const metadata: Metadata = {
   title: "vdesk",
@@ -28,11 +27,7 @@ export default function RootLayout({
         className={[
           GeistSans.variable,
           GeistMono.variable,
-          GeistPixelSquare.variable,
-          GeistPixelGrid.variable,
-          GeistPixelCircle.variable,
-          GeistPixelTriangle.variable,
-          GeistPixelLine.variable,
+          jetbrainsMono.variable,
           "antialiased",
         ].join(" ")}
       >

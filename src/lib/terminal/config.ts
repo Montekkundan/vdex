@@ -1,12 +1,6 @@
 export const TERMINAL_SETTINGS_STORAGE_PREFIX = "vdesk:terminal-settings:";
 
-export type TerminalFontPreset =
-  | "geist_pixel_square"
-  | "geist_pixel_grid"
-  | "geist_pixel_circle"
-  | "geist_pixel_triangle"
-  | "geist_pixel_line"
-  | "geist_mono";
+export type TerminalFontPreset = "geist_mono" | "jetbrains_mono";
 
 export type TerminalCursorStyle = "block" | "underline" | "bar";
 
@@ -31,40 +25,18 @@ export const TERMINAL_FONT_PRESETS: Array<{
   fallback: string;
 }> = [
   {
-    id: "geist_pixel_square",
-    label: "Geist Pixel Square",
-    cssVariable: "--font-geist-pixel-square",
-    fallback: '"Geist Mono", ui-monospace, "SFMono-Regular", Menlo, Monaco, monospace',
-  },
-  {
-    id: "geist_pixel_grid",
-    label: "Geist Pixel Grid",
-    cssVariable: "--font-geist-pixel-grid",
-    fallback: '"Geist Mono", ui-monospace, "SFMono-Regular", Menlo, Monaco, monospace',
-  },
-  {
-    id: "geist_pixel_circle",
-    label: "Geist Pixel Circle",
-    cssVariable: "--font-geist-pixel-circle",
-    fallback: '"Geist Mono", ui-monospace, "SFMono-Regular", Menlo, Monaco, monospace',
-  },
-  {
-    id: "geist_pixel_triangle",
-    label: "Geist Pixel Triangle",
-    cssVariable: "--font-geist-pixel-triangle",
-    fallback: '"Geist Mono", ui-monospace, "SFMono-Regular", Menlo, Monaco, monospace',
-  },
-  {
-    id: "geist_pixel_line",
-    label: "Geist Pixel Line",
-    cssVariable: "--font-geist-pixel-line",
-    fallback: '"Geist Mono", ui-monospace, "SFMono-Regular", Menlo, Monaco, monospace',
-  },
-  {
     id: "geist_mono",
     label: "Geist Mono",
     cssVariable: "--font-geist-mono",
-    fallback: '"Geist Mono", ui-monospace, "SFMono-Regular", Menlo, Monaco, monospace',
+    fallback:
+      '"Geist Mono", ui-monospace, "SFMono-Regular", Menlo, Monaco, monospace',
+  },
+  {
+    id: "jetbrains_mono",
+    label: "JetBrains Mono",
+    cssVariable: "--font-jetbrains-mono",
+    fallback:
+      '"JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Monaco, monospace',
   },
 ];
 
@@ -88,14 +60,20 @@ export function getFontFamilyForPreset(preset: TerminalFontPreset): string {
     TERMINAL_FONT_PRESETS.find((item) => item.id === preset) ??
     TERMINAL_FONT_PRESETS[0];
   if (typeof window === "undefined") return selected.fallback;
-
-  const fromRoot = getComputedStyle(document.documentElement)
-    .getPropertyValue(selected.cssVariable)
-    .trim();
-  if (!fromRoot) return selected.fallback;
-  const normalized = fromRoot.replace(/^['"]|['"]$/g, "").trim();
-  if (!normalized) return selected.fallback;
-  return `${normalized}, ${selected.fallback}`;
+  try {
+    const probe = document.createElement("span");
+    probe.textContent = ".";
+    probe.style.position = "fixed";
+    probe.style.visibility = "hidden";
+    probe.style.pointerEvents = "none";
+    probe.style.fontFamily = `var(${selected.cssVariable}), ${selected.fallback}`;
+    document.body.appendChild(probe);
+    const resolved = getComputedStyle(probe).fontFamily.trim();
+    probe.remove();
+    return resolved || selected.fallback;
+  } catch {
+    return selected.fallback;
+  }
 }
 
 function asHexColor(value: unknown, fallback: string): string {
@@ -121,7 +99,10 @@ export function normalizeTerminalSettings(input: unknown): TerminalSettings {
     ? (fontPreset as TerminalFontPreset)
     : DEFAULT_TERMINAL_SETTINGS.fontPreset;
   const normalizedFontSize = Number.isFinite(fontSizeRaw)
-    ? Math.min(TERMINAL_FONT_SIZE_MAX, Math.max(TERMINAL_FONT_SIZE_MIN, Number(fontSizeRaw)))
+    ? Math.min(
+        TERMINAL_FONT_SIZE_MAX,
+        Math.max(TERMINAL_FONT_SIZE_MIN, Number(fontSizeRaw)),
+      )
     : DEFAULT_TERMINAL_SETTINGS.fontSize;
   const normalizedCursorStyle =
     cursorStyle === "block" ||
@@ -152,13 +133,19 @@ export function normalizeTerminalSettings(input: unknown): TerminalSettings {
   };
 }
 
-export function getSandboxTerminalSettingsStorageKey(sandboxId: string): string {
+export function getSandboxTerminalSettingsStorageKey(
+  sandboxId: string,
+): string {
   return `${TERMINAL_SETTINGS_STORAGE_PREFIX}${sandboxId}`;
 }
 
-export function loadSandboxTerminalSettings(sandboxId: string): TerminalSettings {
+export function loadSandboxTerminalSettings(
+  sandboxId: string,
+): TerminalSettings {
   try {
-    const raw = localStorage.getItem(getSandboxTerminalSettingsStorageKey(sandboxId));
+    const raw = localStorage.getItem(
+      getSandboxTerminalSettingsStorageKey(sandboxId),
+    );
     if (!raw) return DEFAULT_TERMINAL_SETTINGS;
     return normalizeTerminalSettings(JSON.parse(raw));
   } catch {

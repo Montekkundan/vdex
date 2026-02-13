@@ -98,12 +98,15 @@ export function TerminalSettingsDialog({
                 if (raw.length === 0) return;
                 const parsed = Number(raw);
                 if (!Number.isFinite(parsed)) return;
+                if (
+                  parsed < TERMINAL_FONT_SIZE_MIN ||
+                  parsed > TERMINAL_FONT_SIZE_MAX
+                ) {
+                  return;
+                }
                 onChange({
                   ...settings,
-                  fontSize: Math.min(
-                    TERMINAL_FONT_SIZE_MAX,
-                    Math.max(TERMINAL_FONT_SIZE_MIN, parsed),
-                  ),
+                  fontSize: parsed,
                 });
               }}
               onBlur={() => {
@@ -173,7 +176,10 @@ export function TerminalSettingsDialog({
                 onChange={(event) =>
                   onChange({
                     ...settings,
-                    theme: { ...settings.theme, background: event.target.value },
+                    theme: {
+                      ...settings.theme,
+                      background: event.target.value,
+                    },
                   })
                 }
               />
@@ -188,11 +194,17 @@ export function TerminalSettingsDialog({
                 onChange={(event) =>
                   onChange({
                     ...settings,
-                    theme: { ...settings.theme, foreground: event.target.value },
+                    theme: {
+                      ...settings.theme,
+                      foreground: event.target.value,
+                    },
                   })
                 }
               />
-              <Label htmlFor="terminal-cursor" className="text-xs text-gray-800">
+              <Label
+                htmlFor="terminal-cursor"
+                className="text-xs text-gray-800"
+              >
                 Cursor
               </Label>
               <Input
