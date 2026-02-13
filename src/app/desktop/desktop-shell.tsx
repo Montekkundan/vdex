@@ -167,6 +167,7 @@ export function DesktopShell({
   const activeWorkspaceFromStore = useWorkspaceStore((s) =>
     s.workspaces.find((w) => w.id === s.activeWorkspaceId),
   );
+  const activeWorkspaceDisplayClient = activeWorkspaceFromStore?.displayClient ?? "xpra";
   const setWorkspaces = useWorkspaceStore((s) => s.setWorkspaces);
   const setActiveWorkspace = useWorkspaceStore((s) => s.setActiveWorkspace);
   const setSandboxInfo = useWorkspaceStore((s) => s.setSandboxInfo);
@@ -637,7 +638,22 @@ export function DesktopShell({
         </AlertDialogContent>
       </AlertDialog>
       <DesktopBackground />
-      <XpraConnector />
+      {activeWorkspaceDisplayClient === "xpra" ? (
+        <XpraConnector />
+      ) : (
+        <div className="pointer-events-none fixed inset-x-0 top-20 z-[9400] flex justify-center px-4">
+          <div className="pointer-events-auto max-w-xl">
+            <Note type="warning">
+              <p className="text-copy-13 font-medium text-gray-1000">
+                Display client &quot;{activeWorkspaceDisplayClient}&quot; is not implemented yet.
+              </p>
+              <p className="mt-1 text-copy-13 text-gray-900">
+                This workspace cannot render desktop windows until display support is added.
+              </p>
+            </Note>
+          </div>
+        </div>
+      )}
       <Desktop />
       <WindowRenderer />
       <Taskbar launcherToggle={launcherToggle} />

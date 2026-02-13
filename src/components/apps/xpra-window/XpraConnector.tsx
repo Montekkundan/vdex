@@ -3,11 +3,14 @@
 import { useEffect, useRef } from "react";
 import { useXpraStore } from "@/stores/xpra-store";
 import { useWindowStore } from "@/stores/window-store";
-import { useActiveSandbox } from "@/stores/workspace-store";
+import { useActiveSandbox, useWorkspaceStore } from "@/stores/workspace-store";
 import { isLiveSandboxStatus } from "@/lib/sandbox/status";
 
 export function XpraConnector() {
   const { activeWorkspaceId, sandbox } = useActiveSandbox();
+  const activeWorkspaceDisplayClient = useWorkspaceStore((s) =>
+    s.workspaces.find((w) => w.id === s.activeWorkspaceId)?.displayClient ?? "xpra",
+  );
   const xpraConnect = useXpraStore((s) => s.connect);
   const xpraDisconnect = useXpraStore((s) => s.disconnect);
   const xpraConnected = useXpraStore((s) => s.connected);
@@ -25,6 +28,7 @@ export function XpraConnector() {
 
   // Connect to Xpra when sandbox is active
   useEffect(() => {
+    if (activeWorkspaceDisplayClient !== "xpra") return;
     if (!sandbox?.domains.xpra || !activeWorkspaceId) return;
     if (!isLiveSandboxStatus(sandbox.status)) return;
 
@@ -40,7 +44,14 @@ export function XpraConnector() {
       tracked.clear();
       xpraDisconnect();
     };
-  }, [sandbox?.domains.xpra, activeWorkspaceId, xpraConnect, xpraDisconnect]);
+  }, [
+    activeWorkspaceDisplayClient,
+    sandbox?.domains.xpra,
+    sandbox?.status,
+    activeWorkspaceId,
+    xpraConnect,
+    xpraDisconnect,
+  ]);
 
   // Forward global mouse position to Xpra root window (for apps like xeyes)
   useEffect(() => {
