@@ -68,7 +68,7 @@ export const TERMINAL_FONT_PRESETS: Array<{
 ];
 
 export const DEFAULT_TERMINAL_SETTINGS: TerminalSettings = {
-  fontPreset: "geist_pixel_square",
+  fontPreset: "geist_mono",
   fontSize: 14,
   cursorBlink: true,
   cursorStyle: "block",

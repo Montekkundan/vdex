@@ -26,8 +26,6 @@ export function TerminalApp({
   meta?: Record<string, unknown>;
 } = {}) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const terminalRef = useRef<Terminal | null>(null);
-  const fitAddonRef = useRef<FitAddon | null>(null);
   const { activeWorkspaceId, sandbox } = useActiveSandbox();
   const servicesDomain = sandbox?.domains.services;
   const resolvedSettings = useMemo(
@@ -74,11 +72,9 @@ export function TerminalApp({
           },
         });
         term = t;
-        terminalRef.current = t;
 
         const fa = new ghostty.FitAddon();
         fitAddon = fa;
-        fitAddonRef.current = fa;
         t.loadAddon(fa);
 
         t.open(container);
@@ -244,29 +240,8 @@ export function TerminalApp({
       ws?.close();
       fitAddon?.dispose();
       term?.dispose();
-      fitAddonRef.current = null;
-      terminalRef.current = null;
     };
-  }, [servicesDomain, activeWorkspaceId]);
-
-  useEffect(() => {
-    const term = terminalRef.current;
-    const fitAddon = fitAddonRef.current;
-    if (!term) return;
-
-    term.options.fontFamily = getFontFamilyForPreset(resolvedSettings.fontPreset);
-    term.options.fontSize = resolvedSettings.fontSize;
-    term.options.cursorBlink = resolvedSettings.cursorBlink;
-    term.options.cursorStyle = resolvedSettings.cursorStyle;
-    term.options.theme = {
-      ...term.options.theme,
-      background: resolvedSettings.theme.background,
-      foreground: resolvedSettings.theme.foreground,
-      cursor: resolvedSettings.theme.cursor,
-    };
-
-    fitAddon?.fit();
-  }, [resolvedSettings]);
+  }, [servicesDomain, activeWorkspaceId, resolvedSettings]);
 
   if (!activeWorkspaceId || !sandbox) {
     return (
@@ -277,7 +252,8 @@ export function TerminalApp({
   return (
     <div
       ref={containerRef}
-      className={className ?? "h-full w-full overflow-hidden bg-black"}
+      className={className ?? "h-full w-full overflow-hidden"}
+      style={{ backgroundColor: resolvedSettings.theme.background }}
       role="application"
       aria-label="Terminal"
     />
