@@ -373,8 +373,12 @@ echo "  vnc backend: $VNC_BIN"
         return runStep(
           "pm2 + Claude Code + OpenCode + Bun",
           [
-            "npm install -g pm2 @anthropic-ai/claude-code opencode-ai",
-            "curl -fsSL https://bun.sh/install | bash",
+            // pm2 is required for runtime orchestration
+            "npm install -g pm2",
+            // Optional tooling: don't fail snapshot build if these are unavailable
+            "npm install -g @anthropic-ai/claude-code || true",
+            "npm install -g opencode-ai || true",
+            "curl -fsSL https://bun.sh/install | bash || true",
           ].join(" && "),
         );
       },
@@ -562,8 +566,10 @@ echo "  vnc backend: $VNC_BIN"
       return runStep(
         "pm2 + Claude Code + OpenCode + Bun",
         [
-          "npm install -g pm2 @anthropic-ai/claude-code opencode-ai",
-          "curl -fsSL https://bun.sh/install | bash",
+          "npm install -g pm2",
+          "npm install -g @anthropic-ai/claude-code || true",
+          "npm install -g opencode-ai || true",
+          "curl -fsSL https://bun.sh/install | bash || true",
         ].join(" && "),
       );
     },
