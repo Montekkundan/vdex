@@ -27,51 +27,55 @@ export interface TerminalSettings {
 export const TERMINAL_FONT_PRESETS: Array<{
   id: TerminalFontPreset;
   label: string;
-  fontFamily: string;
+  cssVariable: string;
+  fallback: string;
 }> = [
   {
     id: "geist_pixel_square",
     label: "Geist Pixel Square",
-    fontFamily:
-      'var(--font-geist-pixel-square), var(--font-geist-mono), ui-monospace, "SFMono-Regular", Menlo, Monaco, monospace',
+    cssVariable: "--font-geist-pixel-square",
+    fallback: '"Geist Mono", ui-monospace, "SFMono-Regular", Menlo, Monaco, monospace',
   },
   {
     id: "geist_pixel_grid",
     label: "Geist Pixel Grid",
-    fontFamily:
-      'var(--font-geist-pixel-grid), var(--font-geist-mono), ui-monospace, "SFMono-Regular", Menlo, Monaco, monospace',
+    cssVariable: "--font-geist-pixel-grid",
+    fallback: '"Geist Mono", ui-monospace, "SFMono-Regular", Menlo, Monaco, monospace',
   },
   {
     id: "geist_pixel_circle",
     label: "Geist Pixel Circle",
-    fontFamily:
-      'var(--font-geist-pixel-circle), var(--font-geist-mono), ui-monospace, "SFMono-Regular", Menlo, Monaco, monospace',
+    cssVariable: "--font-geist-pixel-circle",
+    fallback: '"Geist Mono", ui-monospace, "SFMono-Regular", Menlo, Monaco, monospace',
   },
   {
     id: "geist_pixel_triangle",
     label: "Geist Pixel Triangle",
-    fontFamily:
-      'var(--font-geist-pixel-triangle), var(--font-geist-mono), ui-monospace, "SFMono-Regular", Menlo, Monaco, monospace',
+    cssVariable: "--font-geist-pixel-triangle",
+    fallback: '"Geist Mono", ui-monospace, "SFMono-Regular", Menlo, Monaco, monospace',
   },
   {
     id: "geist_pixel_line",
     label: "Geist Pixel Line",
-    fontFamily:
-      'var(--font-geist-pixel-line), var(--font-geist-mono), ui-monospace, "SFMono-Regular", Menlo, Monaco, monospace',
+    cssVariable: "--font-geist-pixel-line",
+    fallback: '"Geist Mono", ui-monospace, "SFMono-Regular", Menlo, Monaco, monospace',
   },
   {
     id: "geist_mono",
     label: "Geist Mono",
-    fontFamily:
-      'var(--font-geist-mono), ui-monospace, "SFMono-Regular", Menlo, Monaco, monospace',
+    cssVariable: "--font-geist-mono",
+    fallback: '"Geist Mono", ui-monospace, "SFMono-Regular", Menlo, Monaco, monospace',
   },
 ];
 
+export const TERMINAL_FONT_SIZE_MIN = 8;
+export const TERMINAL_FONT_SIZE_MAX = 96;
+
 export const DEFAULT_TERMINAL_SETTINGS: TerminalSettings = {
   fontPreset: "geist_mono",
-  fontSize: 14,
+  fontSize: 32,
   cursorBlink: true,
-  cursorStyle: "block",
+  cursorStyle: "bar",
   theme: {
     background: "#000000",
     foreground: "#ededed",
@@ -80,10 +84,16 @@ export const DEFAULT_TERMINAL_SETTINGS: TerminalSettings = {
 };
 
 export function getFontFamilyForPreset(preset: TerminalFontPreset): string {
-  return (
-    TERMINAL_FONT_PRESETS.find((item) => item.id === preset)?.fontFamily ??
-    TERMINAL_FONT_PRESETS[0].fontFamily
-  );
+  const selected =
+    TERMINAL_FONT_PRESETS.find((item) => item.id === preset) ??
+    TERMINAL_FONT_PRESETS[0];
+  if (typeof window === "undefined") return selected.fallback;
+
+  const fromBody = getComputedStyle(document.body)
+    .getPropertyValue(selected.cssVariable)
+    .trim();
+  if (!fromBody) return selected.fallback;
+  return `"${fromBody}", ${selected.fallback}`;
 }
 
 function asHexColor(value: unknown, fallback: string): string {
@@ -109,7 +119,7 @@ export function normalizeTerminalSettings(input: unknown): TerminalSettings {
     ? (fontPreset as TerminalFontPreset)
     : DEFAULT_TERMINAL_SETTINGS.fontPreset;
   const normalizedFontSize = Number.isFinite(fontSizeRaw)
-    ? Math.min(32, Math.max(10, Number(fontSizeRaw)))
+    ? Math.min(TERMINAL_FONT_SIZE_MAX, Math.max(TERMINAL_FONT_SIZE_MIN, Number(fontSizeRaw)))
     : DEFAULT_TERMINAL_SETTINGS.fontSize;
   const normalizedCursorStyle =
     cursorStyle === "block" ||

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -21,6 +22,8 @@ import {
 } from "@/components/ui/select";
 import {
   DEFAULT_TERMINAL_SETTINGS,
+  TERMINAL_FONT_SIZE_MAX,
+  TERMINAL_FONT_SIZE_MIN,
   TERMINAL_FONT_PRESETS,
   type TerminalCursorStyle,
   type TerminalSettings,
@@ -41,6 +44,12 @@ export function TerminalSettingsDialog({
   onChange,
   onReset,
 }: TerminalSettingsDialogProps) {
+  const [fontSizeInput, setFontSizeInput] = useState(String(settings.fontSize));
+
+  useEffect(() => {
+    setFontSizeInput(String(settings.fontSize));
+  }, [settings.fontSize]);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
@@ -80,16 +89,37 @@ export function TerminalSettingsDialog({
             <Label htmlFor="terminal-font-size">Font size</Label>
             <Input
               id="terminal-font-size"
-              type="number"
-              min={10}
-              max={32}
-              value={settings.fontSize}
-              onChange={(event) =>
+              type="text"
+              inputMode="numeric"
+              value={fontSizeInput}
+              onChange={(event) => {
+                const raw = event.target.value.replace(/[^\d]/g, "");
+                setFontSizeInput(raw);
+                if (raw.length === 0) return;
+                const parsed = Number(raw);
+                if (!Number.isFinite(parsed)) return;
                 onChange({
                   ...settings,
-                  fontSize: Math.min(32, Math.max(10, Number(event.target.value) || 14)),
-                })
-              }
+                  fontSize: Math.min(
+                    TERMINAL_FONT_SIZE_MAX,
+                    Math.max(TERMINAL_FONT_SIZE_MIN, parsed),
+                  ),
+                });
+              }}
+              onBlur={() => {
+                const parsed = Number(fontSizeInput);
+                const safe = Number.isFinite(parsed)
+                  ? Math.min(
+                      TERMINAL_FONT_SIZE_MAX,
+                      Math.max(TERMINAL_FONT_SIZE_MIN, parsed),
+                    )
+                  : settings.fontSize;
+                onChange({
+                  ...settings,
+                  fontSize: safe,
+                });
+                setFontSizeInput(String(safe));
+              }}
             />
           </div>
 
