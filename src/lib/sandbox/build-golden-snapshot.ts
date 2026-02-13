@@ -348,8 +348,12 @@ XRDP_SESMAN_BIN="$(find_bin xrdp-sesman /usr/sbin/xrdp-sesman /usr/local/sbin/xr
   echo "xrdp-sesman binary not found after install/build" >&2
   exit 1
 }
-VNC_BIN="$(find_bin x11vnc /usr/bin/x11vnc /usr/local/bin/x11vnc || find_bin x0vncserver /usr/bin/x0vncserver /usr/local/bin/x0vncserver)" || {
-  echo "No supported VNC backend found (x11vnc or x0vncserver)" >&2
+VNC_BIN="$(
+  find_bin x11vnc /usr/bin/x11vnc /usr/local/bin/x11vnc ||
+  find_bin x0vncserver /usr/bin/x0vncserver /usr/local/bin/x0vncserver ||
+  find_bin Xvnc /usr/bin/Xvnc /usr/local/bin/Xvnc
+)" || {
+  echo "No supported VNC backend found (x11vnc, x0vncserver, or Xvnc)" >&2
   exit 1
 }
 

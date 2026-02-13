@@ -49,6 +49,26 @@ Display abstraction:
   - `WARM_POOL_AUTO_REPLENISH`
 - On local development (`localhost`), service calls are routed through same-origin API proxy paths to avoid CORS issues.
 
+## Provisioning Logic
+
+Display-client-aware sandbox provisioning:
+
+- `xpra`
+  - May claim a warm-pool sandbox ID.
+  - Warm-pool claim is only used for the default profile (`balanced_4c8g`) with no explicit snapshot override.
+  - Otherwise provisions a fresh sandbox.
+- `novnc`, `vnc`, `kasmvnc`, `rdp`, `webrtc`
+  - Always provision a fresh sandbox (no warm-pool claim path).
+
+Snapshot selection:
+
+- New VM create
+  - Uses explicit `snapshotId` if provided.
+  - Otherwise uses the current golden snapshot.
+- Restart/reconnect
+  - Uses the workspace snapshot first (`workspace.snapshotId`).
+  - Falls back to the current golden snapshot when needed.
+
 ## Setup
 
 ## 1. Install

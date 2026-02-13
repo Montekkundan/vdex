@@ -616,20 +616,26 @@ WEB_ROOT="${SERVICE_DIR}/novnc"
 [ -f "$WEB_ROOT/vnc.html" ] || WEB_ROOT="/usr/share/novnc"
 
 cleanup() {
-  kill "$VNC_PID" "$WS_PID" "$XVFB_PID" "$DBUS_PID" 2>/dev/null || true
+  for pid in "\${VNC_PID:-}" "\${WS_PID:-}" "\${XVFB_PID:-}" "\${DBUS_PID:-}"; do
+    [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
+  done
 }
 trap cleanup EXIT INT TERM
 
-Xvfb ${VNC_DISPLAY} -screen 0 1920x1080x24 -nolisten tcp &
-XVFB_PID=$!
-sleep 0.5
-
 if command -v x11vnc >/dev/null 2>&1; then
+  Xvfb ${VNC_DISPLAY} -screen 0 1920x1080x24 -nolisten tcp &
+  XVFB_PID=$!
+  sleep 0.5
   x11vnc -display ${VNC_DISPLAY} -forever -shared -rfbport 5901 -nopw -localhost &
 elif command -v x0vncserver >/dev/null 2>&1; then
+  Xvfb ${VNC_DISPLAY} -screen 0 1920x1080x24 -nolisten tcp &
+  XVFB_PID=$!
+  sleep 0.5
   x0vncserver -display ${VNC_DISPLAY} -rfbport 5901 -SecurityTypes None -localhost -fg &
+elif command -v Xvnc >/dev/null 2>&1; then
+  Xvnc ${VNC_DISPLAY} -geometry 1920x1080 -depth 24 -rfbport 5901 -localhost -SecurityTypes None -fg &
 else
-  echo "No VNC server found (x11vnc or x0vncserver required)" >&2
+  echo "No VNC server found (x11vnc, x0vncserver, or Xvnc required)" >&2
   exit 1
 fi
 VNC_PID=$!
@@ -663,20 +669,26 @@ WEB_ROOT="${SERVICE_DIR}/novnc"
 [ -f "$WEB_ROOT/vnc.html" ] || WEB_ROOT="/usr/share/novnc"
 
 cleanup() {
-  kill "$VNC_PID" "$WS_PID" "$XVFB_PID" "$DBUS_PID" 2>/dev/null || true
+  for pid in "\${VNC_PID:-}" "\${WS_PID:-}" "\${XVFB_PID:-}" "\${DBUS_PID:-}"; do
+    [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
+  done
 }
 trap cleanup EXIT INT TERM
 
-Xvfb ${VNC_DISPLAY} -screen 0 1920x1080x24 -nolisten tcp &
-XVFB_PID=$!
-sleep 0.5
-
 if command -v x11vnc >/dev/null 2>&1; then
+  Xvfb ${VNC_DISPLAY} -screen 0 1920x1080x24 -nolisten tcp &
+  XVFB_PID=$!
+  sleep 0.5
   x11vnc -display ${VNC_DISPLAY} -forever -shared -rfbport 5901 -nopw -localhost &
 elif command -v x0vncserver >/dev/null 2>&1; then
+  Xvfb ${VNC_DISPLAY} -screen 0 1920x1080x24 -nolisten tcp &
+  XVFB_PID=$!
+  sleep 0.5
   x0vncserver -display ${VNC_DISPLAY} -rfbport 5901 -SecurityTypes None -localhost -fg &
+elif command -v Xvnc >/dev/null 2>&1; then
+  Xvnc ${VNC_DISPLAY} -geometry 1920x1080 -depth 24 -rfbport 5901 -localhost -SecurityTypes None -fg &
 else
-  echo "No VNC server found (x11vnc or x0vncserver required)" >&2
+  echo "No VNC server found (x11vnc, x0vncserver, or Xvnc required)" >&2
   exit 1
 fi
 VNC_PID=$!
@@ -711,7 +723,9 @@ WEB_ROOT="${SERVICE_DIR}/novnc"
 [ -f "$WEB_ROOT/vnc.html" ] || WEB_ROOT="/usr/share/novnc"
 
 cleanup() {
-  kill "$KASM_PID" "$VNC_PID" "$WS_PID" "$XVFB_PID" "$DBUS_PID" 2>/dev/null || true
+  for pid in "\${KASM_PID:-}" "\${VNC_PID:-}" "\${WS_PID:-}" "\${XVFB_PID:-}" "\${DBUS_PID:-}"; do
+    [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
+  done
 }
 trap cleanup EXIT INT TERM
 
@@ -729,16 +743,20 @@ if command -v kasmvncserver >/dev/null 2>&1; then
 fi
 
 # Fallback: expose a Kasm-compatible browser experience on the same port.
-Xvfb ${KASM_DISPLAY} -screen 0 1920x1080x24 -nolisten tcp &
-XVFB_PID=$!
-sleep 0.5
-
 if command -v x11vnc >/dev/null 2>&1; then
+  Xvfb ${KASM_DISPLAY} -screen 0 1920x1080x24 -nolisten tcp &
+  XVFB_PID=$!
+  sleep 0.5
   x11vnc -display ${KASM_DISPLAY} -forever -shared -rfbport 5902 -nopw -localhost &
 elif command -v x0vncserver >/dev/null 2>&1; then
+  Xvfb ${KASM_DISPLAY} -screen 0 1920x1080x24 -nolisten tcp &
+  XVFB_PID=$!
+  sleep 0.5
   x0vncserver -display ${KASM_DISPLAY} -rfbport 5902 -SecurityTypes None -localhost -fg &
+elif command -v Xvnc >/dev/null 2>&1; then
+  Xvnc ${KASM_DISPLAY} -geometry 1920x1080 -depth 24 -rfbport 5902 -localhost -SecurityTypes None -fg &
 else
-  echo "No VNC server found (x11vnc or x0vncserver required)" >&2
+  echo "No VNC server found (x11vnc, x0vncserver, or Xvnc required)" >&2
   exit 1
 fi
 VNC_PID=$!
