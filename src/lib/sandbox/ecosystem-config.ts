@@ -630,18 +630,61 @@ wait "$WS_PID"
 `;
 }
 
+export function getVncStartScript(): string {
+  return `#!/bin/bash
+set -euo pipefail
+
+SOCKET="${DBUS_SOCKET_PATH}"
+rm -f "$SOCKET"
+
+dbus-daemon --session --nofork --address="unix:path=$SOCKET" &
+DBUS_PID=$!
+
+for i in $(seq 1 20); do
+  [ -S "$SOCKET" ] && break
+  sleep 0.1
+done
+
+export DBUS_SESSION_BUS_ADDRESS="unix:path=$SOCKET"
+export GIO_USE_SYSTEMD=0
+export DISPLAY=${VNC_DISPLAY}
+
+cleanup() {
+  kill "$VNC_PID" "$WS_PID" "$XVFB_PID" "$DBUS_PID" 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+
+Xvfb ${VNC_DISPLAY} -screen 0 1920x1080x24 -nolisten tcp &
+XVFB_PID=$!
+sleep 0.5
+
+# Real VNC server endpoint
+x11vnc -display ${VNC_DISPLAY} -forever -shared -rfbport 5901 -nopw -localhost &
+VNC_PID=$!
+
+# Browser bridge for the web app surface
+websockify --web=/usr/share/novnc ${PORTS.DISPLAY} localhost:5901 &
+WS_PID=$!
+
+wait "$WS_PID"
+`;
+}
+
 export function getDisplayStartScript(): string {
   return `#!/bin/bash
 set -euo pipefail
 
 CLIENT="\${DISPLAY_CLIENT:-xpra}"
 
-case "$CLIENT" in
+  case "$CLIENT" in
   xpra)
     exec "${SERVICE_DIR}/xpra-start.sh"
     ;;
   novnc)
     exec "${SERVICE_DIR}/novnc-start.sh"
+    ;;
+  vnc)
+    exec "${SERVICE_DIR}/vnc-start.sh"
     ;;
   *)
     echo "Unsupported DISPLAY_CLIENT: $CLIENT" >&2

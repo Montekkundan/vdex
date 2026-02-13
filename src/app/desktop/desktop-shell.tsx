@@ -173,7 +173,8 @@ export function DesktopShell({
   );
   const activeWorkspaceDisplayClient = activeWorkspaceFromStore?.displayClient ?? "xpra";
   const showRemoteDisplay =
-    activeWorkspaceDisplayClient === "novnc";
+    activeWorkspaceDisplayClient === "novnc" ||
+    activeWorkspaceDisplayClient === "vnc";
   const setWorkspaces = useWorkspaceStore((s) => s.setWorkspaces);
   const setActiveWorkspace = useWorkspaceStore((s) => s.setActiveWorkspace);
   const setSandboxInfo = useWorkspaceStore((s) => s.setSandboxInfo);

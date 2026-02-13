@@ -7,6 +7,7 @@ import {
   getDisplayStartScript,
   getEcosystemConfig,
   getNoVncStartScript,
+  getVncStartScript,
   getXpraStartScript,
   getSandboxBridgeScript,
   SERVICE_DIR,
@@ -429,6 +430,10 @@ fi
           content: Buffer.from(getNoVncStartScript()),
         },
         {
+          path: `${SERVICE_DIR}/vnc-start.sh`,
+          content: Buffer.from(getVncStartScript()),
+        },
+        {
           path: `${SERVICE_DIR}/sandbox-bridge.py`,
           content: Buffer.from(getSandboxBridgeScript()),
         },
@@ -446,6 +451,7 @@ fi
             `${SERVICE_DIR}/display-start.sh`,
             `${SERVICE_DIR}/xpra-start.sh`,
             `${SERVICE_DIR}/novnc-start.sh`,
+            `${SERVICE_DIR}/vnc-start.sh`,
           ],
         }),
         sandbox.runCommand({

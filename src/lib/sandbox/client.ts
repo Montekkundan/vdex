@@ -7,6 +7,7 @@ import {
   getDisplayStartScript,
   getEcosystemConfig,
   getNoVncStartScript,
+  getVncStartScript,
   getXpraStartScript,
   getSandboxBridgeScript,
   SERVICE_DIR,
@@ -192,6 +193,7 @@ async function bootstrapSandbox(
     { path: `${SERVICE_DIR}/display-start.sh`, content: Buffer.from(getDisplayStartScript()) },
     { path: `${SERVICE_DIR}/xpra-start.sh`, content: Buffer.from(getXpraStartScript()) },
     { path: `${SERVICE_DIR}/novnc-start.sh`, content: Buffer.from(getNoVncStartScript()) },
+    { path: `${SERVICE_DIR}/vnc-start.sh`, content: Buffer.from(getVncStartScript()) },
     { path: `${SERVICE_DIR}/sandbox-bridge.py`, content: Buffer.from(getSandboxBridgeScript()) },
   ]);
 
@@ -200,7 +202,7 @@ async function bootstrapSandbox(
     cmd: "bash",
     args: [
       "-c",
-      `cd ${SERVICE_DIR} && npm install ws && npm install -g pm2 && chmod +x ${SERVICE_DIR}/display-start.sh ${SERVICE_DIR}/xpra-start.sh ${SERVICE_DIR}/novnc-start.sh ${SERVICE_DIR}/sandbox-bridge.py`,
+      `cd ${SERVICE_DIR} && npm install ws && npm install -g pm2 && chmod +x ${SERVICE_DIR}/display-start.sh ${SERVICE_DIR}/xpra-start.sh ${SERVICE_DIR}/novnc-start.sh ${SERVICE_DIR}/vnc-start.sh ${SERVICE_DIR}/sandbox-bridge.py`,
     ],
   });
 

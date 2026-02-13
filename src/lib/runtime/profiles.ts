@@ -61,8 +61,7 @@ export const DISPLAY_CLIENTS: Record<DisplayClient, DisplayClientProfile> = {
   vnc: {
     id: "vnc",
     label: "VNC",
-    enabled: false,
-    reason: "Not yet implemented",
+    enabled: true,
   },
   novnc: {
     id: "novnc",
