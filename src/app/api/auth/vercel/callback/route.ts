@@ -153,11 +153,12 @@ export async function GET(request: NextRequest) {
     .where(eq(users.vercelId, vercelUser.sub));
 
   if (!user) {
-    // Check if a user with this email exists (e.g. signed up with password previously)
-    [user] = await db
-      .select()
-      .from(users)
-      .where(eq(users.email, vercelUser.email));
+    if (vercelUser.email) {
+      [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.email, vercelUser.email));
+    }
 
     if (user) {
       // Link Vercel account to existing user

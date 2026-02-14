@@ -6,6 +6,7 @@ import crypto from "crypto";
 
 const SESSION_COOKIE = "vdesk_session";
 const SESSION_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
+const DEFAULT_ADMIN_EMAILS = new Set(["montekkundan@gmail.com"]);
 
 function getSecret(): string {
   const secret = process.env.SESSION_SECRET;
@@ -54,7 +55,24 @@ export async function getSession() {
   const [user] = await db.select().from(users).where(eq(users.id, userId));
   if (!user) return null;
 
-  return { id: user.id, email: user.email, name: user.name, role: user.role };
+  const configuredAdminEmails = (process.env.ADMIN_EMAILS ?? "")
+    .split(",")
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean);
+  const adminEmails = new Set([
+    ...DEFAULT_ADMIN_EMAILS,
+    ...configuredAdminEmails,
+  ]);
+  const isForcedAdmin = Boolean(
+    user.email && adminEmails.has(user.email.toLowerCase()),
+  );
+
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role: isForcedAdmin ? "admin" : user.role,
+  };
 }
 
 export async function createGuestSession() {
