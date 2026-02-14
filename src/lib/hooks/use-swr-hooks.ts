@@ -30,6 +30,79 @@ interface AuthUser {
   vercelAccount: VercelAccountInfo | null;
 }
 
+export interface UserSnapshot {
+  id: string;
+  userId: string;
+  provider: string;
+  experience: string;
+  displayClient: string | null;
+  sizeProfile: string;
+  name: string;
+  description: string | null;
+  snapshotId: string;
+  sourceWorkspaceId: string | null;
+  sourceType: "capture" | "script";
+  installScript: string | null;
+  status: "ready" | "building" | "failed" | "archived";
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface PlatformDefaultSnapshot {
+  id: string;
+  provider: string;
+  experience: string;
+  displayClient: string;
+  sizeProfile: string;
+  defaultSnapshotId: string;
+  updatedAt: string;
+}
+
+interface SnapshotsResponse {
+  snapshots: UserSnapshot[];
+  platformDefaults: PlatformDefaultSnapshot[];
+  fallbackDefaults: {
+    gui: string | null;
+    cli: string | null;
+  };
+  limits: {
+    maxSnapshotsPerUser: number;
+  };
+}
+
+export interface UserPoolPolicy {
+  id: string;
+  userId: string;
+  provider: string;
+  experience: string;
+  displayClient: string;
+  sizeProfile: string;
+  snapshotRefType: "platform_default" | "user_snapshot";
+  snapshotRefId: string | null;
+  target: number;
+  enabled: boolean;
+  maxAgeMinutes: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface PoolPoliciesResponse {
+  policies: UserPoolPolicy[];
+  stats: {
+    available: number;
+    claimed: number;
+    expired: number;
+  };
+  limits: {
+    maxSnapshotsPerUser: number;
+    maxPoolBucketsPerUser: number;
+    maxWarmEntriesPerUserTotal: number;
+    maxTargetPerBucket: number;
+    defaultMaxAgeMinutes: number;
+  };
+}
+
 export function useUser() {
   const { data, error, isLoading } = useSWR<AuthUser>(
     SWR_KEYS.user,
@@ -44,6 +117,187 @@ export function useUser() {
     isLoading,
     error: error as Error | undefined,
   };
+}
+
+export function useSnapshots(enabled = true) {
+  const { data, error, isLoading, isValidating } = useSWR<SnapshotsResponse>(
+    enabled ? SWR_KEYS.snapshots : null,
+    fetcher,
+    { revalidateOnFocus: true },
+  );
+
+  return {
+    snapshots: data?.snapshots ?? [],
+    platformDefaults: data?.platformDefaults ?? [],
+    fallbackDefaults: data?.fallbackDefaults ?? { gui: null, cli: null },
+    limits: data?.limits ?? { maxSnapshotsPerUser: 10 },
+    isLoading,
+    isValidating,
+    error: error as Error | undefined,
+  };
+}
+
+export function mutateSnapshots() {
+  return mutate(SWR_KEYS.snapshots);
+}
+
+export function usePoolPolicies(enabled = true) {
+  const { data, error, isLoading, isValidating } =
+    useSWR<PoolPoliciesResponse>(
+      enabled ? SWR_KEYS.poolPolicies : null,
+      fetcher,
+      { revalidateOnFocus: true },
+    );
+
+  return {
+    policies: data?.policies ?? [],
+    stats: data?.stats ?? { available: 0, claimed: 0, expired: 0 },
+    limits:
+      data?.limits ??
+      ({
+        maxSnapshotsPerUser: 10,
+        maxPoolBucketsPerUser: 3,
+        maxWarmEntriesPerUserTotal: 10,
+        maxTargetPerBucket: 5,
+        defaultMaxAgeMinutes: 45,
+      } as const),
+    isLoading,
+    isValidating,
+    error: error as Error | undefined,
+  };
+}
+
+export function mutatePoolPolicies() {
+  return mutate(SWR_KEYS.poolPolicies);
+}
+
+export async function createPoolPolicyMutate(payload: {
+  provider: string;
+  experience: string;
+  displayClient: string;
+  sizeProfile: string;
+  snapshotRefType: "platform_default" | "user_snapshot";
+  snapshotRefId?: string | null;
+  target: number;
+  enabled?: boolean;
+  maxAgeMinutes?: number;
+}) {
+  const res = await fetch("/api/pools/policies", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(body.error ?? "Failed to create pool policy");
+  }
+  await mutatePoolPolicies();
+  return body.policy as UserPoolPolicy;
+}
+
+export async function updatePoolPolicyMutate(
+  id: string,
+  payload: { target?: number; enabled?: boolean; maxAgeMinutes?: number },
+) {
+  const res = await fetch(`/api/pools/policies/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(body.error ?? "Failed to update pool policy");
+  }
+  await mutatePoolPolicies();
+  return body.policy as UserPoolPolicy;
+}
+
+export async function deletePoolPolicyMutate(id: string) {
+  const res = await fetch(`/api/pools/policies/${id}`, {
+    method: "DELETE",
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(body.error ?? "Failed to delete pool policy");
+  }
+  await mutatePoolPolicies();
+}
+
+export async function createSnapshotMutate(payload: {
+  name: string;
+  description?: string;
+  snapshotId: string;
+  provider?: string;
+  experience?: string;
+  displayClient?: string;
+  sizeProfile?: string;
+}) {
+  const res = await fetch("/api/snapshots", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error ?? "Failed to create snapshot");
+  await mutateSnapshots();
+  return body.snapshot as UserSnapshot;
+}
+
+export async function captureSnapshotMutate(payload: {
+  workspaceId: string;
+  name: string;
+  description?: string;
+}) {
+  const res = await fetch("/api/snapshots/capture", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error ?? "Failed to capture snapshot");
+  await mutateSnapshots();
+  return body.snapshot as UserSnapshot;
+}
+
+export async function buildSnapshotMutate(payload: {
+  name: string;
+  installScript: string;
+  description?: string;
+  experience?: "gui" | "cli";
+}) {
+  const res = await fetch("/api/snapshots/build", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error ?? "Failed to build snapshot");
+  await mutateSnapshots();
+  return body.snapshot as UserSnapshot;
+}
+
+export async function updateSnapshotMutate(
+  id: string,
+  payload: { name?: string; description?: string; isDefault?: boolean },
+) {
+  const res = await fetch(`/api/snapshots/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error ?? "Failed to update snapshot");
+  await mutateSnapshots();
+  return body.snapshot as UserSnapshot;
+}
+
+export async function deleteSnapshotMutate(id: string) {
+  const res = await fetch(`/api/snapshots/${id}`, {
+    method: "DELETE",
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error ?? "Failed to delete snapshot");
+  await mutateSnapshots();
 }
 
 export async function loginMutate(email: string, password: string) {

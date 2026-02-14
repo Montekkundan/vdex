@@ -17,6 +17,9 @@ export interface CreateWorkspaceInput {
   experience?: WorkspaceExperience;
   displayClient?: DisplayClient;
   sizeProfile?: SizeProfileId;
+  snapshotSource?: "platform_default" | "user_snapshot" | "explicit_snapshot_id";
+  snapshotRefId?: string;
+  snapshotId?: string;
 }
 
 interface WorkspaceStore {
@@ -202,6 +205,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
           experience: input?.experience,
           displayClient: input?.displayClient,
           sizeProfile: input?.sizeProfile,
+          snapshotSource: input?.snapshotSource,
+          snapshotRefId: input?.snapshotRefId,
+          snapshotId: input?.snapshotId,
         }),
       });
       if (!res.ok) {

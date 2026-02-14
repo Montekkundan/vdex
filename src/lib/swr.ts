@@ -13,6 +13,8 @@ export const fetcher = async <T>(url: string): Promise<T> => {
 
 export const SWR_KEYS = {
   user: "/api/auth/me",
+  snapshots: "/api/snapshots",
+  poolPolicies: "/api/pools/policies",
   workspaces: "/api/sandbox/list",
   workspace: (id: string) => `/api/sandbox/${id}`,
   windows: (id: string) => `/api/sandbox/${id}/windows`,

@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { mutateWorkspaces, useWorkspaces } from "@/lib/hooks/use-swr-hooks";
+import Link from "next/link";
+import { mutateWorkspaces, useSnapshots, useWorkspaces } from "@/lib/hooks/use-swr-hooks";
 import { DISPLAY_CLIENTS, EXPERIENCES, PROVIDERS, SIZE_PROFILES } from "@/lib/runtime/profiles";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 import { slugify } from "@/lib/workspace-slug";
@@ -51,6 +52,7 @@ const STATUS_STYLE: Record<string, string> = {
 export function DesktopHub() {
   const router = useRouter();
   const { workspaces, isLoading } = useWorkspaces(true);
+  const { snapshots } = useSnapshots(true);
   const createWorkspace = useWorkspaceStore((s) => s.createWorkspace);
   const restartWorkspace = useWorkspaceStore((s) => s.restartWorkspace);
   const stopWorkspace = useWorkspaceStore((s) => s.stopWorkspace);
@@ -65,12 +67,35 @@ export function DesktopHub() {
   const [newWorkspaceExperience, setNewWorkspaceExperience] = useState<WorkspaceExperience>("gui");
   const [newWorkspaceDisplayClient, setNewWorkspaceDisplayClient] = useState<DisplayClient>("xpra");
   const [newWorkspaceSizeProfile, setNewWorkspaceSizeProfile] = useState<SizeProfileId>("balanced_4c8g");
+  const [newWorkspaceSnapshotSource, setNewWorkspaceSnapshotSource] = useState<
+    "platform_default" | "user_snapshot"
+  >("platform_default");
+  const [newWorkspaceSnapshotRefId, setNewWorkspaceSnapshotRefId] = useState("");
   const [shutdownWorkspace, setShutdownWorkspace] = useState<{ id: string; name: string } | null>(null);
   const [shutdownWithSnapshot, setShutdownWithSnapshot] = useState(false);
   const [shutdownWithoutSnapshot, setShutdownWithoutSnapshot] = useState(false);
   const [deleteWorkspaceTarget, setDeleteWorkspaceTarget] = useState<{ id: string; name: string } | null>(null);
   const [deletingWorkspace, setDeletingWorkspace] = useState(false);
   const checkedRef = useRef<Set<string>>(new Set());
+  const compatibleSnapshots = useMemo(
+    () =>
+      snapshots.filter(
+        (s) =>
+          s.status === "ready" &&
+          s.provider === newWorkspaceProvider &&
+          s.experience === newWorkspaceExperience &&
+          (s.displayClient ?? "none") ===
+            (newWorkspaceExperience === "cli" ? "none" : newWorkspaceDisplayClient) &&
+          s.sizeProfile === newWorkspaceSizeProfile,
+      ),
+    [
+      snapshots,
+      newWorkspaceProvider,
+      newWorkspaceExperience,
+      newWorkspaceDisplayClient,
+      newWorkspaceSizeProfile,
+    ],
+  );
 
   const sorted = useMemo(
     () =>
@@ -121,6 +146,8 @@ export function DesktopHub() {
     setNewWorkspaceExperience("gui");
     setNewWorkspaceDisplayClient("xpra");
     setNewWorkspaceSizeProfile("balanced_4c8g");
+    setNewWorkspaceSnapshotSource("platform_default");
+    setNewWorkspaceSnapshotRefId("");
   }
 
   async function handleCreate() {
@@ -133,6 +160,11 @@ export function DesktopHub() {
         experience: newWorkspaceExperience,
         displayClient: newWorkspaceExperience === "gui" ? newWorkspaceDisplayClient : "none",
         sizeProfile: newWorkspaceSizeProfile,
+        snapshotSource: newWorkspaceSnapshotSource,
+        snapshotRefId:
+          newWorkspaceSnapshotSource === "user_snapshot"
+            ? newWorkspaceSnapshotRefId || undefined
+            : undefined,
       });
       setCreateDialogOpen(false);
       resetCreateDialog();
@@ -240,6 +272,9 @@ export function DesktopHub() {
           </div>
           <div className="flex items-center gap-2">
             <UserProfile />
+            <Button asChild variant="secondary">
+              <Link href="/profiles">Profiles</Link>
+            </Button>
             <Button
               onClick={() => setCreateDialogOpen(true)}
               disabled={!!creatingStatus || actionId === "create"}
@@ -510,6 +545,45 @@ export function DesktopHub() {
                 </SelectContent>
               </Select>
             </div>
+
+            <div className="space-y-1">
+              <label className="text-copy-12 text-gray-800">Snapshot source</label>
+              <Select
+                value={newWorkspaceSnapshotSource}
+                onValueChange={(value) =>
+                  setNewWorkspaceSnapshotSource(value as "platform_default" | "user_snapshot")
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select source" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="platform_default">Platform default</SelectItem>
+                  <SelectItem value="user_snapshot">My snapshot</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {newWorkspaceSnapshotSource === "user_snapshot" ? (
+              <div className="space-y-1">
+                <label className="text-copy-12 text-gray-800">My snapshot</label>
+                <Select
+                  value={newWorkspaceSnapshotRefId}
+                  onValueChange={(value) => setNewWorkspaceSnapshotRefId(value)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select snapshot" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {compatibleSnapshots.map((snapshot) => (
+                      <SelectItem key={snapshot.id} value={snapshot.id}>
+                        {snapshot.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
           </div>
 
           <DialogFooter>
@@ -522,7 +596,12 @@ export function DesktopHub() {
             </Button>
             <Button
               onClick={handleCreate}
-              disabled={!!creatingStatus || actionId === "create"}
+              disabled={
+                !!creatingStatus ||
+                actionId === "create" ||
+                (newWorkspaceSnapshotSource === "user_snapshot" &&
+                  !newWorkspaceSnapshotRefId)
+              }
             >
               {actionId === "create" ? <Spinner className="size-3.5" /> : "Create VM"}
             </Button>

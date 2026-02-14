@@ -21,11 +21,16 @@ import {
 } from "@/lib/runtime/validation";
 import { WORKSPACE_LIMITS } from "@/lib/sandbox/limits";
 import { enforceRateLimit, RATE_LIMIT_IDS } from "@/lib/rate-limit";
+import { resolveSnapshotSource } from "@/lib/sandbox/snapshot-sources";
+import type { SnapshotSource } from "@/lib/pools/constants";
+import { logPoolClaimEvent } from "@/lib/pools/claim-events";
 
 type CreateWorkspaceBody = {
   name?: string;
   icon?: string;
   snapshotId?: string;
+  snapshotSource?: SnapshotSource;
+  snapshotRefId?: string;
   workspaceId?: string;
   provider?: unknown;
   experience?: unknown;
@@ -77,6 +82,8 @@ export async function POST(req: Request) {
       name,
       icon,
       snapshotId: explicitSnapshotId,
+      snapshotSource,
+      snapshotRefId,
       workspaceId,
     } = body;
 
@@ -132,20 +139,58 @@ export async function POST(req: Request) {
         );
       }
 
-      const snapshotId =
-        explicitSnapshotId ||
-        existingWorkspace.snapshotId ||
-        (await getGoldenSnapshotId(resolvedExperience.value)) ||
-        undefined;
+      const resolvedSnapshot = await resolveSnapshotSource({
+        userId: session.id,
+        provider: resolvedProvider.value,
+        experience: resolvedExperience.value,
+        displayClient: resolvedDisplayClient.value,
+        sizeProfile: resolvedSize.value.id,
+        snapshotSource,
+        snapshotRefId,
+        explicitSnapshotId:
+          explicitSnapshotId || existingWorkspace.snapshotId || undefined,
+      });
+
+      const snapshotId = resolvedSnapshot.snapshotId;
 
       let sandbox =
-        resolvedProvider.value === "vercel" &&
-        !explicitSnapshotId &&
-        resolvedExperience.value === "gui" &&
-        resolvedDisplayClient.value === "xpra" &&
-        existingWorkspace.sizeProfile === "balanced_4c8g"
-          ? await claimWarmVM()
+        resolvedProvider.value === "vercel"
+          ? await claimWarmVM({
+              userId: session.id,
+              provider: resolvedProvider.value,
+              experience: resolvedExperience.value,
+              displayClient: resolvedDisplayClient.value,
+              sizeProfile: resolvedSize.value.id,
+              snapshotRefType: resolvedSnapshot.snapshotRefType,
+              snapshotRefId: resolvedSnapshot.snapshotRefId,
+            })
           : null;
+
+      if (!sandbox) {
+        sandbox =
+          resolvedProvider.value === "vercel" &&
+          !explicitSnapshotId &&
+          resolvedExperience.value === "gui" &&
+          resolvedDisplayClient.value === "xpra" &&
+          existingWorkspace.sizeProfile === "balanced_4c8g"
+            ? await claimWarmVM()
+            : null;
+      }
+
+      if (resolvedProvider.value === "vercel") {
+        await logPoolClaimEvent({
+          userId: session.id,
+          workspaceId: existingWorkspace.id,
+          provider: resolvedProvider.value,
+          experience: resolvedExperience.value,
+          displayClient: resolvedDisplayClient.value,
+          sizeProfile: resolvedSize.value.id,
+          snapshotRefType: resolvedSnapshot.snapshotRefType,
+          snapshotRefId: resolvedSnapshot.snapshotRefId,
+          result: sandbox ? "hit" : "miss",
+          reason: sandbox ? "claimed warm pool entry" : "no warm entry available",
+        });
+      }
 
       if (!sandbox) {
         try {
@@ -186,6 +231,20 @@ export async function POST(req: Request) {
         .returning();
 
       const fallback = "fallback" in sandbox ? (sandbox.fallback ?? false) : false;
+      if (resolvedProvider.value === "vercel" && fallback) {
+        await logPoolClaimEvent({
+          userId: session.id,
+          workspaceId: existingWorkspace.id,
+          provider: resolvedProvider.value,
+          experience: resolvedExperience.value,
+          displayClient: resolvedDisplayClient.value,
+          sizeProfile: resolvedSize.value.id,
+          snapshotRefType: resolvedSnapshot.snapshotRefType,
+          snapshotRefId: resolvedSnapshot.snapshotRefId,
+          result: "fallback",
+          reason: "snapshot fallback to fresh runtime",
+        });
+      }
       return NextResponse.json({ workspace: updated, sandbox, fallback });
     }
 
@@ -292,19 +351,59 @@ export async function POST(req: Request) {
     ]);
 
     const [workspace] = insertResult;
-    const snapshotId = explicitSnapshotId || goldenSnapshotId || undefined;
+    const resolvedSnapshot = await resolveSnapshotSource({
+      userId: session.id,
+      provider: resolvedProvider.value,
+      experience: resolvedExperience.value,
+      displayClient: resolvedDisplayClient.value,
+      sizeProfile: resolvedSize.value.id,
+      snapshotSource,
+      snapshotRefId,
+      explicitSnapshotId: explicitSnapshotId || goldenSnapshotId || undefined,
+    });
+    const snapshotId = resolvedSnapshot.snapshotId;
 
     let sandbox;
     try {
       // Try to claim a pre-warmed VM from the pool (only for default vercel profile)
       sandbox =
-        resolvedProvider.value === "vercel" &&
-        !explicitSnapshotId &&
-        resolvedExperience.value === "gui" &&
-        resolvedDisplayClient.value === "xpra" &&
-        resolvedSize.value.id === "balanced_4c8g"
-          ? await claimWarmVM()
+        resolvedProvider.value === "vercel"
+          ? await claimWarmVM({
+              userId: session.id,
+              provider: resolvedProvider.value,
+              experience: resolvedExperience.value,
+              displayClient: resolvedDisplayClient.value,
+              sizeProfile: resolvedSize.value.id,
+              snapshotRefType: resolvedSnapshot.snapshotRefType,
+              snapshotRefId: resolvedSnapshot.snapshotRefId,
+            })
           : null;
+
+      if (!sandbox) {
+        sandbox =
+          resolvedProvider.value === "vercel" &&
+          !explicitSnapshotId &&
+          resolvedExperience.value === "gui" &&
+          resolvedDisplayClient.value === "xpra" &&
+          resolvedSize.value.id === "balanced_4c8g"
+            ? await claimWarmVM()
+            : null;
+      }
+
+      if (resolvedProvider.value === "vercel") {
+        await logPoolClaimEvent({
+          userId: session.id,
+          workspaceId: workspace.id,
+          provider: resolvedProvider.value,
+          experience: resolvedExperience.value,
+          displayClient: resolvedDisplayClient.value,
+          sizeProfile: resolvedSize.value.id,
+          snapshotRefType: resolvedSnapshot.snapshotRefType,
+          snapshotRefId: resolvedSnapshot.snapshotRefId,
+          result: sandbox ? "hit" : "miss",
+          reason: sandbox ? "claimed warm pool entry" : "no warm entry available",
+        });
+      }
 
       if (!sandbox) {
         const driver = getProviderDriver(resolvedProvider.value);
@@ -353,10 +452,26 @@ export async function POST(req: Request) {
       .where(eq(workspaces.id, workspace.id))
       .returning();
 
+    const fallback = "fallback" in sandbox ? (sandbox.fallback ?? false) : false;
+    if (resolvedProvider.value === "vercel" && fallback) {
+      await logPoolClaimEvent({
+        userId: session.id,
+        workspaceId: workspace.id,
+        provider: resolvedProvider.value,
+        experience: resolvedExperience.value,
+        displayClient: resolvedDisplayClient.value,
+        sizeProfile: resolvedSize.value.id,
+        snapshotRefType: resolvedSnapshot.snapshotRefType,
+        snapshotRefId: resolvedSnapshot.snapshotRefId,
+        result: "fallback",
+        reason: "snapshot fallback to fresh runtime",
+      });
+    }
+
     return NextResponse.json({
       workspace: updated,
       sandbox,
-      fallback: "fallback" in sandbox ? (sandbox.fallback ?? false) : false,
+      fallback,
     });
   } catch (err) {
     console.error("Create sandbox error:", err);
