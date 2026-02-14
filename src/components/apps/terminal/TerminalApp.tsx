@@ -7,6 +7,7 @@ import { NoWorkspacePlaceholder } from "@/components/apps/no-workspace-placehold
 import {
   saveTerminalState,
   loadTerminalState,
+  clearTerminalState,
 } from "@/lib/terminal/state-cache";
 import {
   DEFAULT_TERMINAL_SETTINGS,
@@ -16,6 +17,7 @@ import {
 } from "@/lib/terminal/config";
 
 const SERIALIZE_INTERVAL_MS = 5_000;
+const RESTORE_CHUNK_SIZE = 8_192;
 
 export function TerminalApp({
   className,
@@ -132,9 +134,29 @@ export function TerminalApp({
 
         // Restore cached terminal content before connecting so the user
         // immediately sees previous output instead of a blank screen.
+        const safeWrite = (data: string | Uint8Array): boolean => {
+          try {
+            t.write(data);
+            return true;
+          } catch {
+            return false;
+          }
+        };
+
         const cached = loadTerminalState(activeWorkspaceId);
+        let restoredFromCache = false;
         if (cached) {
-          t.write(cached);
+          try {
+            for (let i = 0; i < cached.length; i += RESTORE_CHUNK_SIZE) {
+              const chunk = cached.slice(i, i + RESTORE_CHUNK_SIZE);
+              if (!safeWrite(chunk)) {
+                throw new Error("failed to restore terminal cache chunk");
+              }
+            }
+            restoredFromCache = true;
+          } catch {
+            clearTerminalState(activeWorkspaceId);
+          }
         }
 
         const wsUrl = `wss://${servicesDomain}/ws/terminal?cols=${t.cols}&rows=${t.rows}`;
@@ -142,33 +164,33 @@ export function TerminalApp({
 
         ws.onopen = () => {
           if (disposed) return;
-          if (!cached) {
-            t.write("\x1b[2J\x1b[H");
+          if (!restoredFromCache) {
+            safeWrite("\x1b[2J\x1b[H");
           }
         };
 
         ws.onmessage = (event: MessageEvent) => {
           if (disposed) return;
           if (typeof event.data === "string") {
-            t.write(event.data);
+            safeWrite(event.data);
           } else if (event.data instanceof ArrayBuffer) {
-            t.write(new Uint8Array(event.data));
+            safeWrite(new Uint8Array(event.data));
           } else if (event.data instanceof Blob) {
             event.data.arrayBuffer().then((buf: ArrayBuffer) => {
-              if (!disposed) t.write(new Uint8Array(buf));
+              if (!disposed) safeWrite(new Uint8Array(buf));
             });
           }
         };
 
         ws.onclose = () => {
           if (!disposed) {
-            t.write("\r\n\x1b[90m[Connection closed]\x1b[0m\r\n");
+            safeWrite("\r\n\x1b[90m[Connection closed]\x1b[0m\r\n");
           }
         };
 
         ws.onerror = () => {
           if (!disposed) {
-            t.write("\r\n\x1b[31m[Connection error]\x1b[0m\r\n");
+            safeWrite("\r\n\x1b[31m[Connection error]\x1b[0m\r\n");
           }
         };
 

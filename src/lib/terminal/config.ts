@@ -45,7 +45,7 @@ export const TERMINAL_FONT_SIZE_MAX = 96;
 
 export const DEFAULT_TERMINAL_SETTINGS: TerminalSettings = {
   fontPreset: "geist_mono",
-  fontSize: 32,
+  fontSize: 14,
   cursorBlink: true,
   cursorStyle: "bar",
   theme: {

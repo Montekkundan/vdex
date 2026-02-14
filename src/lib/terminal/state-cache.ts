@@ -10,6 +10,7 @@
 
 const CACHE_PREFIX = "vdesk:terminal:";
 const MAX_AGE_MS = 30 * 60 * 1000; // 30 minutes
+const MAX_STATE_CHARS = 200_000;
 
 interface CacheEntry {
   state: string;
@@ -21,8 +22,12 @@ export function saveTerminalState(
   serializedState: string,
 ): void {
   try {
+    const trimmedState =
+      serializedState.length > MAX_STATE_CHARS
+        ? serializedState.slice(-MAX_STATE_CHARS)
+        : serializedState;
     const entry: CacheEntry = {
-      state: serializedState,
+      state: trimmedState,
       savedAt: Date.now(),
     };
     localStorage.setItem(CACHE_PREFIX + workspaceId, JSON.stringify(entry));
