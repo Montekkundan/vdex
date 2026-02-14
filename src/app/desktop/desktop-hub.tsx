@@ -11,6 +11,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { WorkspaceIcon } from "@/components/workspace-icon";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { UserProfile } from "@/components/user-profile";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
@@ -237,12 +238,15 @@ export function DesktopHub() {
               Create, switch, and manage your VMs.
             </p>
           </div>
-          <Button
-            onClick={() => setCreateDialogOpen(true)}
-            disabled={!!creatingStatus || actionId === "create"}
-          >
-            New VM
-          </Button>
+          <div className="flex items-center gap-2">
+            <UserProfile />
+            <Button
+              onClick={() => setCreateDialogOpen(true)}
+              disabled={!!creatingStatus || actionId === "create"}
+            >
+              New VM
+            </Button>
+          </div>
         </div>
 
         <Card className="bg-background-200">

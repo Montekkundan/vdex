@@ -22,7 +22,7 @@ interface TokenResponse {
 
 interface VercelUserInfo {
   sub: string;
-  email: string;
+  email?: string;
   name?: string;
   preferred_username?: string;
 }
@@ -163,7 +163,11 @@ export async function GET(request: NextRequest) {
       // Link Vercel account to existing user
       await db
         .update(users)
-        .set({ vercelId: vercelUser.sub, name: vercelUser.name || user.name })
+        .set({
+          vercelId: vercelUser.sub,
+          email: vercelUser.email ?? user.email,
+          name: vercelUser.name || vercelUser.preferred_username || user.name,
+        })
         .where(eq(users.id, user.id));
     } else if (currentSession?.role === "guest") {
       // Upgrade guest user to full user -- preserves their workspace(s)
@@ -182,7 +186,7 @@ export async function GET(request: NextRequest) {
       [user] = await db
         .insert(users)
         .values({
-          email: vercelUser.email,
+          email: vercelUser.email ?? null,
           name: vercelUser.name || vercelUser.preferred_username || null,
           vercelId: vercelUser.sub,
         })
@@ -193,8 +197,8 @@ export async function GET(request: NextRequest) {
     await db
       .update(users)
       .set({
-        email: vercelUser.email,
-        name: vercelUser.name || user.name,
+        email: vercelUser.email ?? user.email,
+        name: vercelUser.name || vercelUser.preferred_username || user.name,
       })
       .where(eq(users.id, user.id));
   }

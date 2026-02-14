@@ -23,6 +23,7 @@ interface AuthUser {
   id: string;
   email: string | null;
   name: string | null;
+  image: string | null;
   role: "user" | "admin" | "guest";
   workspaceLimit: number | null;
   vercelConnected: boolean;

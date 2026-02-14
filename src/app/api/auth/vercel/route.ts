@@ -47,6 +47,7 @@ export async function GET() {
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: "code",
+    scope: "openid email profile",
     state,
     code_challenge: codeChallenge,
     code_challenge_method: "S256",
