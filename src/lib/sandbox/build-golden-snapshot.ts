@@ -40,10 +40,19 @@ export async function buildGoldenSnapshot(options?: {
   installScript?: string;
   logPrefix?: string;
   experience?: WorkspaceExperience;
+  persistAsPlatformDefault?: boolean;
+  onLog?: (line: string) => void | Promise<void>;
 }): Promise<GoldenSnapshotResult> {
   const prefix = options?.logPrefix ?? "golden-snapshot";
   const installScript = options?.installScript;
   const experience = options?.experience ?? "gui";
+  const persistAsPlatformDefault = options?.persistAsPlatformDefault ?? true;
+  const onLog = options?.onLog;
+
+  const log = async (line: string) => {
+    console.log(`[${prefix}] ${line}`);
+    await onLog?.(`[${prefix}] ${line}`);
+  };
 
   const sandbox = await Sandbox.create({
     runtime: "node24",
@@ -52,7 +61,7 @@ export async function buildGoldenSnapshot(options?: {
   });
 
   const runStep = async (label: string, cmd: string) => {
-    console.log(`[${prefix}] ${label}...`);
+    await log(`${label}...`);
     const result = await sandbox.runCommand({
       cmd: "bash",
       args: ["-c", cmd],
@@ -61,7 +70,7 @@ export async function buildGoldenSnapshot(options?: {
       const stderr = await result.stderr();
       throw new Error(`[${prefix}] ${label} failed: ${stderr}`);
     }
-    console.log(`[${prefix}] ${label} done`);
+    await log(`${label} done`);
     return result;
   };
 
@@ -71,7 +80,7 @@ export async function buildGoldenSnapshot(options?: {
     args: ["-c", "echo $HOME"],
   });
   const HOME = (await homeResult.stdout()).trim() || "/home/vercel-sandbox";
-  console.log(`[${prefix}] Sandbox HOME=${HOME}`);
+  await log(`Sandbox HOME=${HOME}`);
 
   // Vercel Sandbox containers don't support cap_set_file (file capabilities).
   // Some RPMs (e.g. gstreamer1) set capabilities on binaries during install,
@@ -216,16 +225,6 @@ sudo tee /etc/profile.d/sandbox-gtk-theme.sh > /dev/null << 'GTKENVEOF'
 export GTK_THEME=Adwaita-dark
 GTKENVEOF
 
-sudo tee /usr/share/applications/xeyes.desktop > /dev/null << 'DESKTOPEOF'
-[Desktop Entry]
-Name=XEyes
-Comment=Follow the mouse pointer with a pair of eyes
-Exec=xeyes
-Icon=applications-other
-Type=Application
-Categories=Utility;
-DESKTOPEOF
-
 # Rename Nautilus's .desktop entry so our JS Files app doesn't conflict
 if [ -f /usr/share/applications/org.gnome.Nautilus.desktop ]; then
   sudo sed -i 's/^Name=Files$/Name=Nautilus/' /usr/share/applications/org.gnome.Nautilus.desktop
@@ -233,9 +232,7 @@ fi
 
 # Shell aliases for new apps
 sudo tee /etc/profile.d/sandbox-aliases.sh > /dev/null << 'ALIASEOF'
-alias image-viewer=loupe
-alias pdf-viewer=papers
-alias sysmon=gnome-system-monitor
+alias editor=vim
 ALIASEOF
 `;
 
@@ -369,16 +366,24 @@ echo "  vnc backend: $VNC_BIN"
 
   if (experience === "cli") {
     await all({
-      async npmGlobals() {
+      async cliBasePackages() {
         return runStep(
-          "pm2 + Claude Code + OpenCode + Bun",
+          "CLI base packages",
+          [
+            "sudo dnf install -y git python3 python3-pip tmux jq tree wget unzip tar gzip xz vim-enhanced",
+            "sudo ln -sf /usr/bin/vim /usr/local/bin/vi",
+          ].join(" && "),
+        );
+      },
+      async npmGlobals() {
+        await this.$.cliBasePackages;
+        return runStep(
+          "pm2 + Bun + pnpm",
           [
             // pm2 is required for runtime orchestration
             "npm install -g pm2",
-            // Optional tooling: don't fail snapshot build if these are unavailable
-            "npm install -g @anthropic-ai/claude-code || true",
-            "npm install -g opencode-ai || true",
             "curl -fsSL https://bun.sh/install | bash || true",
+            "corepack enable && corepack prepare pnpm@latest --activate || true",
           ].join(" && "),
         );
       },
@@ -472,12 +477,11 @@ echo "  vnc backend: $VNC_BIN"
         "SPAL repo + system tools + X11/GTK4 deps + desktop apps",
         [
           "sudo dnf install -y spal-release",
-            "sudo dnf install -y vim-enhanced htop wget jq tree tmux ripgrep cpio" +
-            " xorg-x11-server-Xvfb xorg-x11-server-Xorg xorg-x11-drv-dummy mesa-dri-drivers dbus-x11 xdg-utils git python3-pip xterm xorg-x11-fonts-misc xorg-x11-fonts-Type1 xorg-x11-fonts-100dpi xeyes" +
+            "sudo dnf install -y vim-enhanced wget jq tree tmux cpio" +
+            " xorg-x11-server-Xvfb xorg-x11-server-Xorg xorg-x11-drv-dummy mesa-dri-drivers dbus-x11 xdg-utils git python3-pip xterm xorg-x11-fonts-misc xorg-x11-fonts-Type1 xorg-x11-fonts-100dpi" +
             " mesa-libEGL mesa-libGLES mesa-libgbm libglvnd-egl libglvnd-gles" +
             " gstreamer1 gstreamer1-plugins-base gstreamer1-plugins-good" +
-            " firefox nautilus gnome-calculator gnome-text-editor gimp" +
-            " loupe papers gnome-system-monitor" +
+            " firefox nautilus gnome-calculator gnome-text-editor" +
             " libnotify python3-dbus python3-pyxdg python3-gobject" +
             " xdpyinfo" +
             " google-noto-sans-fonts google-noto-emoji-fonts dejavu-fonts-all adwaita-icon-theme",
@@ -528,7 +532,7 @@ echo "  vnc backend: $VNC_BIN"
     async codeServerExtensions() {
       await this.$.codeServer;
 
-      console.log(`[${prefix}] Writing code-server theme + settings...`);
+      await log("Writing code-server theme + settings...");
       const csFiles = getCodeServerFiles(HOME);
       await sandbox.writeFiles(
         csFiles.map((f) => ({
@@ -536,7 +540,7 @@ echo "  vnc backend: $VNC_BIN"
           content: Buffer.from(f.content),
         })),
       );
-      console.log(`[${prefix}] code-server theme + settings done`);
+      await log("code-server theme + settings done");
 
       const extensions = [
         "dbaeumer.vscode-eslint", // ESLint
@@ -546,9 +550,7 @@ echo "  vnc backend: $VNC_BIN"
         "astro-build.astro-vscode", // Astro
         "biomejs.biome", // Biome (linter/formatter)
       ];
-      console.log(
-        `[${prefix}] Installing ${extensions.length} code-server extensions...`,
-      );
+      await log(`Installing ${extensions.length} code-server extensions...`);
       await sandbox.runCommand({
         cmd: "bash",
         args: [
@@ -558,18 +560,17 @@ echo "  vnc backend: $VNC_BIN"
             .join(" & ") + " & wait",
         ],
       });
-      console.log(`[${prefix}] code-server extensions done`);
+      await log("code-server extensions done");
     },
 
     // npm globals: pm2, Claude Code, OpenCode, Bun (independent of dnf)
     async npmGlobals() {
       return runStep(
-        "pm2 + Claude Code + OpenCode + Bun",
+        "pm2 + Bun + pnpm",
         [
           "npm install -g pm2",
-          "npm install -g @anthropic-ai/claude-code || true",
-          "npm install -g opencode-ai || true",
           "curl -fsSL https://bun.sh/install | bash || true",
+          "corepack enable && corepack prepare pnpm@latest --activate || true",
         ].join(" && "),
       );
     },
@@ -664,9 +665,7 @@ echo "  vnc backend: $VNC_BIN"
 
     // XDG dirs + desktop shortcuts (no deps, just SDK writes)
     async xdgDesktop() {
-      console.log(
-        `[${prefix}] Setting up XDG user directories + desktop shortcuts...`,
-      );
+      await log("Setting up XDG user directories + desktop shortcuts...");
       await sandbox.writeFiles([
         {
           path: `${HOME}/WELCOME.md`,
@@ -677,7 +676,7 @@ echo "  vnc backend: $VNC_BIN"
               "You're running a full Linux desktop in the cloud, streamed to your browser.",
               "",
               "Everything you see — windows, taskbar, app launcher — is a web app. But the",
-              "apps inside (Firefox, GIMP) are real",
+              "apps inside (Firefox, Text Editor) are real",
               "native Linux programs, running on a real Linux kernel.",
               "",
               "## Quick start",
@@ -722,6 +721,20 @@ echo "  vnc backend: $VNC_BIN"
           content: Buffer.from("en_US\n"),
         },
         {
+          path: `${HOME}/Desktop/files.desktop`,
+          content: Buffer.from(
+            [
+              "[Desktop Entry]",
+              "Name=Files",
+              "Comment=Browse files",
+              "Exec=nautilus",
+              "Icon=org.gnome.Nautilus",
+              "Type=Application",
+              "Categories=Utility;FileManager;",
+            ].join("\n") + "\n",
+          ),
+        },
+        {
           path: `${HOME}/Desktop/firefox.desktop`,
           content: Buffer.from(
             [
@@ -763,76 +776,6 @@ echo "  vnc backend: $VNC_BIN"
             ].join("\n") + "\n",
           ),
         },
-        {
-          path: `${HOME}/Desktop/gimp.desktop`,
-          content: Buffer.from(
-            [
-              "[Desktop Entry]",
-              "Name=GIMP",
-              "Comment=GNU Image Manipulation Program",
-              "Exec=gimp-3.0",
-              "Icon=gimp",
-              "Type=Application",
-              "Categories=Graphics;",
-            ].join("\n") + "\n",
-          ),
-        },
-        {
-          path: `${HOME}/Desktop/image-viewer.desktop`,
-          content: Buffer.from(
-            [
-              "[Desktop Entry]",
-              "Name=Image Viewer",
-              "Comment=View images",
-              "Exec=loupe",
-              "Icon=org.gnome.Loupe",
-              "Type=Application",
-              "Categories=Graphics;Viewer;",
-            ].join("\n") + "\n",
-          ),
-        },
-        {
-          path: `${HOME}/Desktop/document-viewer.desktop`,
-          content: Buffer.from(
-            [
-              "[Desktop Entry]",
-              "Name=Document Viewer",
-              "Comment=View PDFs and documents",
-              "Exec=papers",
-              "Icon=org.gnome.Papers",
-              "Type=Application",
-              "Categories=Office;Viewer;",
-            ].join("\n") + "\n",
-          ),
-        },
-        {
-          path: `${HOME}/Desktop/system-monitor.desktop`,
-          content: Buffer.from(
-            [
-              "[Desktop Entry]",
-              "Name=System Monitor",
-              "Comment=View and manage system processes",
-              "Exec=gnome-system-monitor",
-              "Icon=org.gnome.SystemMonitor",
-              "Type=Application",
-              "Categories=System;Monitor;",
-            ].join("\n") + "\n",
-          ),
-        },
-        {
-          path: `${HOME}/Desktop/xeyes.desktop`,
-          content: Buffer.from(
-            [
-              "[Desktop Entry]",
-              "Name=XEyes",
-              "Comment=Follow the mouse pointer with a pair of eyes",
-              "Exec=xeyes",
-              "Icon=applications-other",
-              "Type=Application",
-              "Categories=Utility;",
-            ].join("\n") + "\n",
-          ),
-        },
       ]);
       await sandbox.runCommand({
         cmd: "bash",
@@ -841,12 +784,13 @@ echo "  vnc backend: $VNC_BIN"
           "mkdir -p ~/Documents ~/Downloads ~/Music ~/Pictures ~/Videos ~/Templates ~/Public",
         ],
       });
-      console.log(`[${prefix}] XDG user directories + desktop shortcuts done`);
+      await log("XDG user directories + desktop shortcuts done");
     },
 
     // Custom install script (optional, no deps)
     async customScript() {
       if (!installScript) return;
+      await log("Running custom install script");
       await sandbox.writeFiles([
         {
           path: `${HOME}/setup-custom.sh`,
@@ -860,18 +804,21 @@ echo "  vnc backend: $VNC_BIN"
       if (result.exitCode !== 0) {
         const stderr = await result.stderr();
         console.error(`[${prefix}] Custom install script failed:`, stderr);
+        await onLog?.(`[${prefix}] Custom install script failed: ${stderr}`);
+      } else {
+        await log("Custom install script done");
       }
     },
     });
   }
 
-  console.log(`[${prefix}] All setup steps completed, creating snapshot...`);
+  await log("All setup steps completed, creating snapshot...");
   const snapshot = await sandbox.snapshot();
-  await setGoldenSnapshotId(snapshot.snapshotId, experience);
+  if (persistAsPlatformDefault) {
+    await setGoldenSnapshotId(snapshot.snapshotId, experience);
+  }
 
-  console.log(
-    `[${prefix}] Created new golden snapshot: ${snapshot.snapshotId}`,
-  );
+  await log(`Created new golden snapshot: ${snapshot.snapshotId}`);
 
   return {
     snapshotId: snapshot.snapshotId,

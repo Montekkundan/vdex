@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
-import { users, workspaces, warmPool, accounts } from "@/lib/db/schema";
+import { users, workspaces, warmPool, poolClaimEvents, userPoolPolicies } from "@/lib/db/schema";
 import { eq, sql, count } from "drizzle-orm";
+import { POOL_LIMITS } from "@/lib/pools/constants";
 
 export async function GET() {
   const session = await getSession();
@@ -18,10 +19,13 @@ export async function GET() {
     userStats,
     workspaceStats,
     warmPoolStats,
+    poolClaimStats,
     userList,
     recentWorkspaces,
     usersByDay,
     workspacesByStatus,
+    topPoolConsumers,
+    policyStats,
   ] = await Promise.all([
     db
       .select({
@@ -70,6 +74,16 @@ export async function GET() {
 
     db
       .select({
+        total: count(),
+        hits: count(sql`CASE WHEN ${poolClaimEvents.result} = 'hit' THEN 1 END`),
+        misses: count(sql`CASE WHEN ${poolClaimEvents.result} = 'miss' THEN 1 END`),
+        stale: count(sql`CASE WHEN ${poolClaimEvents.result} = 'stale' THEN 1 END`),
+        fallback: count(sql`CASE WHEN ${poolClaimEvents.result} = 'fallback' THEN 1 END`),
+      })
+      .from(poolClaimEvents),
+
+    db
+      .select({
         id: users.id,
         email: users.email,
         name: users.name,
@@ -115,15 +129,42 @@ export async function GET() {
       })
       .from(workspaces)
       .groupBy(workspaces.status),
+
+    db
+      .select({
+        userId: poolClaimEvents.userId,
+        claims: count(),
+        userEmail: users.email,
+        userName: users.name,
+      })
+      .from(poolClaimEvents)
+      .leftJoin(users, eq(poolClaimEvents.userId, users.id))
+      .groupBy(poolClaimEvents.userId, users.email, users.name)
+      .orderBy(sql`${count()} DESC`)
+      .limit(10),
+
+    db
+      .select({
+        totalPolicies: count(),
+        enabledPolicies: count(
+          sql`CASE WHEN ${userPoolPolicies.enabled} = true THEN 1 END`,
+        ),
+        totalTarget: sql<number>`COALESCE(SUM(${userPoolPolicies.target}), 0)`,
+      })
+      .from(userPoolPolicies),
   ]);
 
   return NextResponse.json({
     users: userStats[0],
     workspaces: workspaceStats[0],
     warmPool: warmPoolStats[0],
+    poolClaims: poolClaimStats[0],
     userList,
     recentWorkspaces,
     usersByDay,
     workspacesByStatus,
+    topPoolConsumers,
+    poolPolicies: policyStats[0],
+    poolLimits: POOL_LIMITS,
   });
 }

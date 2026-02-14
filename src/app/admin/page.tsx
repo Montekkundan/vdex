@@ -50,8 +50,10 @@ interface AdminStats {
 
 interface SnapshotData {
   goldenSnapshot: {
-    snapshotId: string | null;
-    updatedAt: string | null;
+    guiSnapshotId: string | null;
+    guiUpdatedAt: string | null;
+    cliSnapshotId: string | null;
+    cliUpdatedAt: string | null;
   };
   pool: {
     target: number;
@@ -61,6 +63,31 @@ interface SnapshotData {
     expired: number;
     matchingSnapshot: number;
   };
+  claimStats: {
+    total: number;
+    hits: number;
+    misses: number;
+    stale: number;
+    fallback: number;
+  };
+  poolPolicies: {
+    totalPolicies: number;
+    enabledPolicies: number;
+    totalTarget: number;
+  };
+  poolLimits: {
+    maxSnapshotsPerUser: number;
+    maxPoolBucketsPerUser: number;
+    maxWarmEntriesPerUserTotal: number;
+    maxTargetPerBucket: number;
+    defaultMaxAgeMinutes: number;
+  };
+  topPoolUsers: Array<{
+    userId: string;
+    userEmail: string | null;
+    userName: string | null;
+    claims: number;
+  }>;
   recentPoolEntries: Array<{
     id: string;
     sandboxId: string;
@@ -68,7 +95,23 @@ interface SnapshotData {
     status: string;
     claimedAt: string | null;
     createdAt: string;
+    userId: string | null;
+    userEmail: string | null;
+    userName: string | null;
   }>;
+  rebuildJob: {
+    id: string;
+    status: "running" | "succeeded" | "failed";
+    progress: number;
+    stage: string;
+    message: string | null;
+    guiSnapshotId: string | null;
+    cliSnapshotId: string | null;
+    error: string | null;
+    startedAt: string;
+    finishedAt: string | null;
+    updatedAt: string;
+  } | null;
 }
 
 const statusColors: Record<string, string> = {
@@ -279,7 +322,26 @@ function DonutChart({
   const radius = 60;
   const strokeWidth = 16;
   const circumference = 2 * Math.PI * radius;
-  let offset = 0;
+  const arcs = data.reduce<
+    {
+      arcs: Array<{ label: string; color: string; dashArray: string; dashOffset: number }>;
+      offset: number;
+    }
+  >(
+    (acc, d) => {
+      const pct = d.value / total;
+      const dashLength = pct * circumference;
+      acc.arcs.push({
+        label: d.label,
+        color: d.color,
+        dashArray: `${dashLength} ${circumference}`,
+        dashOffset: -acc.offset,
+      });
+      acc.offset += dashLength;
+      return acc;
+    },
+    { arcs: [], offset: 0 },
+  ).arcs;
 
   return (
     <div className="rounded-lg border border-gray-alpha-400 bg-background-100 p-5">
@@ -288,22 +350,18 @@ function DonutChart({
       </h3>
       <div className="flex items-center gap-6">
         <svg width="160" height="160" viewBox="0 0 160 160">
-          {data.map((d) => {
-            const pct = d.value / total;
-            const dashArray = `${pct * circumference} ${circumference}`;
-            const currentOffset = offset;
-            offset += pct * circumference;
+          {arcs.map((arc) => {
             return (
               <circle
-                key={d.label}
+                key={arc.label}
                 cx="80"
                 cy="80"
                 r={radius}
                 fill="none"
-                stroke={d.color}
+                stroke={arc.color}
                 strokeWidth={strokeWidth}
-                strokeDasharray={dashArray}
-                strokeDashoffset={-currentOffset}
+                strokeDasharray={arc.dashArray}
+                strokeDashoffset={arc.dashOffset}
                 strokeLinecap="butt"
                 transform="rotate(-90 80 80)"
               />
@@ -644,6 +702,13 @@ function SnapshotsTab() {
     type: "success" | "error";
     message: string;
   } | null>(null);
+  const rebuildJob = data?.rebuildJob;
+  const rebuildLog = (rebuildJob?.message ?? "").trimEnd();
+  const rebuildLogLines = rebuildLog ? rebuildLog.split("\n") : [];
+  const rebuildLastLine =
+    rebuildLogLines.length > 0
+      ? rebuildLogLines[rebuildLogLines.length - 1]
+      : rebuildJob?.stage ?? "queued";
 
   const fetchData = useCallback(() => {
     setLoading(true);
@@ -663,6 +728,14 @@ function SnapshotsTab() {
     fetchData();
   }, [fetchData]);
 
+  useEffect(() => {
+    if (!rebuildJob || rebuildJob.status !== "running") return;
+    const timer = setInterval(() => {
+      fetchData();
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [rebuildJob, fetchData]);
+
   const runAction = async (action: string) => {
     setActionLoading(action);
     setActionResult(null);
@@ -677,8 +750,12 @@ function SnapshotsTab() {
       setActionResult({
         type: "success",
         message:
-          action === "rebuild"
-            ? `New snapshot created: ${result.snapshotId}`
+          action === "rebuild_all"
+            ? "Rebuild all started. Progress will update below."
+            : action === "rebuild" || action === "rebuild_gui"
+            ? `New GUI snapshot created: ${result.snapshotId}`
+            : action === "rebuild_cli"
+              ? `New CLI snapshot created: ${result.snapshotId}`
             : action === "replenish"
               ? `Pool replenished: ${result.created} created (${result.existing} existing, target ${result.target})`
               : `Pool pruned: ${result.pruned} expired`,
@@ -732,24 +809,40 @@ function SnapshotsTab() {
           </h3>
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-copy-13 text-gray-700">Snapshot ID</span>
+              <span className="text-copy-13 text-gray-700">GUI Snapshot ID</span>
               <code className="text-copy-13 text-gray-1000 bg-gray-alpha-100 px-2 py-0.5 rounded font-mono">
-                {data.goldenSnapshot.snapshotId
-                  ? `${data.goldenSnapshot.snapshotId.slice(0, 20)}...`
+                {data.goldenSnapshot.guiSnapshotId
+                  ? `${data.goldenSnapshot.guiSnapshotId.slice(0, 20)}...`
                   : "None"}
               </code>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-copy-13 text-gray-700">Last Updated</span>
+              <span className="text-copy-13 text-gray-700">GUI Last Updated</span>
               <span className="text-copy-13 text-gray-1000">
-                {data.goldenSnapshot.updatedAt
-                  ? new Date(data.goldenSnapshot.updatedAt).toLocaleString()
+                {data.goldenSnapshot.guiUpdatedAt
+                  ? new Date(data.goldenSnapshot.guiUpdatedAt).toLocaleString()
+                  : "Never"}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-copy-13 text-gray-700">CLI Snapshot ID</span>
+              <code className="text-copy-13 text-gray-1000 bg-gray-alpha-100 px-2 py-0.5 rounded font-mono">
+                {data.goldenSnapshot.cliSnapshotId
+                  ? `${data.goldenSnapshot.cliSnapshotId.slice(0, 20)}...`
+                  : "None"}
+              </code>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-copy-13 text-gray-700">CLI Last Updated</span>
+              <span className="text-copy-13 text-gray-1000">
+                {data.goldenSnapshot.cliUpdatedAt
+                  ? new Date(data.goldenSnapshot.cliUpdatedAt).toLocaleString()
                   : "Never"}
               </span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-copy-13 text-gray-700">
-                Pool VMs on this snapshot
+                Pool VMs on GUI snapshot
               </span>
               <span className="text-copy-13 text-gray-1000 tabular-nums">
                 {data.pool.matchingSnapshot}
@@ -760,17 +853,75 @@ function SnapshotsTab() {
             <Button
               size="sm"
               variant="default"
-              disabled={actionLoading !== null}
-              onClick={() => runAction("rebuild")}
+              disabled={actionLoading !== null || data.rebuildJob?.status === "running"}
+              onClick={() => runAction("rebuild_all")}
             >
-              {actionLoading === "rebuild" ? <Spinner size="sm" /> : "Rebuild Snapshot"}
+              {actionLoading === "rebuild_all" ? <Spinner size="sm" /> : "Rebuild All"}
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={actionLoading !== null}
+              onClick={() => runAction("rebuild_gui")}
+            >
+              {actionLoading === "rebuild_gui" ? <Spinner size="sm" /> : "Rebuild GUI"}
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={actionLoading !== null}
+              onClick={() => runAction("rebuild_cli")}
+            >
+              {actionLoading === "rebuild_cli" ? <Spinner size="sm" /> : "Rebuild CLI"}
             </Button>
           </div>
-          {actionLoading === "rebuild" && (
+          {(actionLoading === "rebuild_gui" || actionLoading === "rebuild_cli") && (
             <p className="text-copy-13 text-amber-700">
               Building golden snapshot... this takes 3-8 minutes.
             </p>
           )}
+          {data.rebuildJob ? (
+            <div className="space-y-2 rounded-md border border-gray-alpha-300 p-3">
+              <div className="flex items-center justify-between text-copy-13">
+                <span className="text-gray-700">
+                  {rebuildLastLine}
+                </span>
+                <span className="tabular-nums text-gray-900">
+                  {Math.max(0, Math.min(100, data.rebuildJob.progress))}%
+                </span>
+              </div>
+              <div className="h-2 w-full overflow-hidden rounded bg-gray-alpha-200">
+                <div
+                  className={cn(
+                    "h-full transition-all",
+                    data.rebuildJob.status === "failed"
+                      ? "bg-red-600"
+                      : data.rebuildJob.status === "succeeded"
+                        ? "bg-green-600"
+                        : "bg-blue-600",
+                  )}
+                  style={{
+                    width: `${Math.max(0, Math.min(100, data.rebuildJob.progress))}%`,
+                  }}
+                />
+              </div>
+              <div className="text-copy-12 text-gray-700">
+                Status: {data.rebuildJob.status} · Updated:{" "}
+                {new Date(data.rebuildJob.updatedAt).toLocaleString()}
+              </div>
+              <div className="rounded-md border border-gray-alpha-300 bg-background-200">
+                <div className="px-2 py-1 border-b border-gray-alpha-300 text-copy-12 text-gray-700">
+                  Rebuild Logs
+                </div>
+                <pre className="max-h-56 overflow-auto p-2 text-[11px] leading-5 text-gray-900 font-mono whitespace-pre-wrap break-words">
+                  {rebuildLog || "[job] Waiting for logs..."}
+                </pre>
+              </div>
+              {data.rebuildJob.error ? (
+                <p className="text-copy-12 text-red-800">{data.rebuildJob.error}</p>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         <div className="rounded-lg border border-gray-alpha-400 bg-background-100 p-5 space-y-4">
@@ -803,6 +954,24 @@ function SnapshotsTab() {
               </p>
             </div>
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <p className="text-copy-13 text-gray-700">Hit</p>
+              <p className="text-copy-14 text-green-800 tabular-nums">{data.claimStats.hits}</p>
+            </div>
+            <div>
+              <p className="text-copy-13 text-gray-700">Miss</p>
+              <p className="text-copy-14 text-gray-900 tabular-nums">{data.claimStats.misses}</p>
+            </div>
+            <div>
+              <p className="text-copy-13 text-gray-700">Stale</p>
+              <p className="text-copy-14 text-amber-800 tabular-nums">{data.claimStats.stale}</p>
+            </div>
+            <div>
+              <p className="text-copy-13 text-gray-700">Fallback</p>
+              <p className="text-copy-14 text-blue-800 tabular-nums">{data.claimStats.fallback}</p>
+            </div>
+          </div>
           <div className="pt-2 flex gap-2">
             <Button
               size="sm"
@@ -820,6 +989,39 @@ function SnapshotsTab() {
             >
               {actionLoading === "prune" ? <Spinner size="sm" /> : "Prune Stale"}
             </Button>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="rounded-lg border border-gray-alpha-400 bg-background-100 p-5 space-y-3">
+          <h3 className="text-label-14 font-medium text-gray-1000">Policy Caps</h3>
+          <div className="text-copy-13 text-gray-800 space-y-1">
+            <p>Max snapshots/user: {data.poolLimits.maxSnapshotsPerUser}</p>
+            <p>Max pool buckets/user: {data.poolLimits.maxPoolBucketsPerUser}</p>
+            <p>Max warm entries/user: {data.poolLimits.maxWarmEntriesPerUserTotal}</p>
+            <p>Max target per bucket: {data.poolLimits.maxTargetPerBucket}</p>
+            <p>Default max age (minutes): {data.poolLimits.defaultMaxAgeMinutes}</p>
+          </div>
+          <div className="text-copy-13 text-gray-700">
+            Policies: {data.poolPolicies.enabledPolicies}/{data.poolPolicies.totalPolicies} enabled · total target {data.poolPolicies.totalTarget}
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-gray-alpha-400 bg-background-100 p-5 space-y-3">
+          <h3 className="text-label-14 font-medium text-gray-1000">Top Pool Users</h3>
+          <div className="space-y-2">
+            {data.topPoolUsers.map((u) => (
+              <div key={u.userId} className="flex items-center justify-between text-copy-13">
+                <span className="truncate text-gray-900">
+                  {u.userEmail ?? u.userName ?? u.userId}
+                </span>
+                <span className="tabular-nums text-gray-700">{u.claims}</span>
+              </div>
+            ))}
+            {data.topPoolUsers.length === 0 ? (
+              <p className="text-copy-13 text-gray-700">No claim data yet.</p>
+            ) : null}
           </div>
         </div>
       </div>
@@ -842,6 +1044,9 @@ function SnapshotsTab() {
               <th className="px-4 py-3 text-left text-label-13 font-medium text-gray-900">
                 Status
               </th>
+              <th className="px-4 py-3 text-left text-label-13 font-medium text-gray-900">
+                Owner
+              </th>
               <th className="px-4 py-3 text-right text-label-13 font-medium text-gray-900">
                 Created
               </th>
@@ -860,7 +1065,7 @@ function SnapshotsTab() {
                   {entry.sandboxId.slice(0, 16)}...
                 </td>
                 <td className="px-4 py-3 text-copy-13 text-gray-700 font-mono">
-                  {entry.snapshotId === data.goldenSnapshot.snapshotId ? (
+                  {entry.snapshotId === data.goldenSnapshot.guiSnapshotId ? (
                     <Badge variant="outline" className="border-green-300 bg-green-100 text-green-900">
                       current
                     </Badge>
@@ -872,6 +1077,9 @@ function SnapshotsTab() {
                   <Badge variant="outline" className={poolStatusColors[entry.status] ?? poolStatusColors.expired}>
                     {entry.status}
                   </Badge>
+                </td>
+                <td className="px-4 py-3 text-copy-13 text-gray-700">
+                  {entry.userEmail ?? entry.userName ?? "--"}
                 </td>
                 <td className="px-4 py-3 text-copy-13 text-gray-700 text-right">
                   {new Date(entry.createdAt).toLocaleString()}
@@ -886,7 +1094,7 @@ function SnapshotsTab() {
             {data.recentPoolEntries.length === 0 && (
               <tr>
                 <td
-                  colSpan={5}
+                  colSpan={6}
                   className="px-4 py-8 text-center text-copy-14 text-gray-700"
                 >
                   No pool entries
