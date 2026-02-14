@@ -4,6 +4,7 @@ import { GeistMono } from "geist/font/mono";
 import { JetBrains_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { AppFooter } from "@/components/layout/app-footer";
 import "./globals.css";
 
 const jetbrainsMono = JetBrains_Mono({
@@ -37,7 +38,12 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <TooltipProvider>{children}</TooltipProvider>
+          <TooltipProvider>
+            <div className="flex min-h-screen flex-col">
+              <div className="flex-1">{children}</div>
+              <AppFooter />
+            </div>
+          </TooltipProvider>
         </ThemeProvider>
       </body>
     </html>
