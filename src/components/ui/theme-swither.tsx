@@ -5,7 +5,7 @@ import clsx from "clsx";
 
 type TTheme = "system" | "light" | "dark";
 
-export function ThemeSwitcher() {
+export function ThemeSwither() {
   const { theme, setTheme } = useTheme();
   const resolvedTheme: TTheme =
     theme === "light" || theme === "dark" || theme === "system"
