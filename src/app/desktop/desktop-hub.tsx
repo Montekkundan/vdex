@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import type { ColumnDef } from "@tanstack/react-table";
 import { mutateWorkspaces, useSnapshots, useWorkspaces } from "@/lib/hooks/use-swr-hooks";
 import { DISPLAY_CLIENTS, EXPERIENCES, PROVIDERS, SIZE_PROFILES } from "@/lib/runtime/profiles";
 import { useWorkspaceStore } from "@/stores/workspace-store";
@@ -22,7 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { MainDataTable } from "@/components/ui/main-data-table";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -106,6 +107,104 @@ export function DesktopHub() {
       }),
     [workspaces],
   );
+  const instanceColumns: ColumnDef<(typeof sorted)[number]>[] = [
+      {
+        accessorKey: "name",
+        header: "Workspace",
+        cell: ({ row }) => {
+          const ws = row.original;
+          return (
+            <div className="min-w-0 flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-alpha-200">
+                <WorkspaceIcon name={ws.icon} size={16} />
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-copy-14 font-medium text-gray-1000">
+                  {ws.name}
+                </p>
+                <p className="text-copy-12 text-gray-700">{ws.id}</p>
+              </div>
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: "status",
+        header: "Status",
+        cell: ({ row }) => (
+          <Badge
+            variant="outline"
+            className={STATUS_STYLE[row.original.status] ?? STATUS_STYLE.stopped}
+          >
+            {row.original.status}
+          </Badge>
+        ),
+      },
+      {
+        accessorKey: "updatedAt",
+        header: "Updated",
+        cell: ({ row }) => (
+          <span className="text-copy-12 text-gray-700">
+            {new Date(row.original.updatedAt).toLocaleString()}
+          </span>
+        ),
+      },
+      {
+        id: "actions",
+        header: () => <div className="text-right">Actions</div>,
+        enableSorting: false,
+        cell: ({ row }) => {
+          const ws = row.original;
+          const busy = actionId === ws.id;
+          return (
+            <div className="flex justify-end gap-2">
+              {ws.status === "active" ? (
+                <Button
+                  size="sm"
+                  onClick={() => handleOpen(ws.id, ws.name, ws.status)}
+                  disabled={busy}
+                >
+                  {busy ? <Spinner className="size-3.5" /> : "Open"}
+                </Button>
+              ) : ws.snapshotId ? (
+                <Button
+                  size="sm"
+                  onClick={() => handleOpen(ws.id, ws.name, ws.status)}
+                  disabled={busy}
+                >
+                  {busy ? <Spinner className="size-3.5" /> : "Start"}
+                </Button>
+              ) : (
+                <Badge variant="outline">No snapshot</Badge>
+              )}
+              {ws.status === "active" && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setShutdownWorkspace({ id: ws.id, name: ws.name })}
+                  disabled={busy}
+                >
+                  Shutdown
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={() =>
+                  setDeleteWorkspaceTarget({
+                    id: ws.id,
+                    name: ws.name,
+                  })
+                }
+                disabled={busy}
+              >
+                Delete
+              </Button>
+            </div>
+          );
+        },
+      },
+    ];
 
   // Reconcile stale "active" DB rows against live sandbox state.
   // /api/sandbox/[id] will mark dead sandboxes as stopped server-side.
@@ -301,95 +400,13 @@ export function DesktopHub() {
                 </Button>
               </div>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Workspace</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Updated</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {sorted.map((ws) => {
-                    const busy = actionId === ws.id;
-                    return (
-                      <TableRow key={ws.id}>
-                        <TableCell>
-                          <div className="min-w-0 flex items-center gap-3">
-                            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-alpha-200">
-                              <WorkspaceIcon name={ws.icon} size={16} />
-                            </div>
-                            <div className="min-w-0">
-                              <p className="truncate text-copy-14 font-medium text-gray-1000">
-                                {ws.name}
-                              </p>
-                              <p className="text-copy-12 text-gray-700">{ws.id}</p>
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant="outline"
-                            className={STATUS_STYLE[ws.status] ?? STATUS_STYLE.stopped}
-                          >
-                            {ws.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-copy-12 text-gray-700">
-                          {new Date(ws.updatedAt).toLocaleString()}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex justify-end gap-2">
-                            {ws.status === "active" ? (
-                              <Button
-                                size="sm"
-                                onClick={() => handleOpen(ws.id, ws.name, ws.status)}
-                                disabled={busy}
-                              >
-                                {busy ? <Spinner className="size-3.5" /> : "Open"}
-                              </Button>
-                            ) : ws.snapshotId ? (
-                              <Button
-                                size="sm"
-                                onClick={() => handleOpen(ws.id, ws.name, ws.status)}
-                                disabled={busy}
-                              >
-                                {busy ? <Spinner className="size-3.5" /> : "Start"}
-                              </Button>
-                            ) : (
-                              <Badge variant="outline">No snapshot</Badge>
-                            )}
-                            {ws.status === "active" && (
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                onClick={() => setShutdownWorkspace({ id: ws.id, name: ws.name })}
-                                disabled={busy}
-                              >
-                                Shutdown
-                              </Button>
-                            )}
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              onClick={() =>
-                                setDeleteWorkspaceTarget({
-                                  id: ws.id,
-                                  name: ws.name,
-                                })
-                              }
-                              disabled={busy}
-                            >
-                              Delete
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
+              <MainDataTable
+                columns={instanceColumns}
+                data={sorted}
+                filterColumnId="name"
+                filterPlaceholder="Filter workspaces..."
+                getRowId={(row) => row.id}
+              />
             )}
           </CardContent>
         </Card>

@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
+import type { ColumnDef } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { MainDataTable } from "@/components/ui/main-data-table";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 
@@ -113,6 +115,10 @@ interface SnapshotData {
     updatedAt: string;
   } | null;
 }
+
+type AdminUserRow = AdminStats["userList"][number];
+type AdminWorkspaceRow = AdminStats["recentWorkspaces"][number];
+type PoolEntryRow = SnapshotData["recentPoolEntries"][number];
 
 const statusColors: Record<string, string> = {
   active: "border-green-300 bg-green-100 text-green-900",
@@ -561,130 +567,125 @@ function OverviewTab({ stats }: { stats: AdminStats }) {
 }
 
 function UsersTab({ stats }: { stats: AdminStats }) {
+  const columns = useMemo<ColumnDef<AdminUserRow>[]>(
+    () => [
+      {
+        accessorKey: "name",
+        header: "Name",
+        cell: ({ row }) => (
+          <span className="text-copy-14 text-gray-1000">{row.original.name ?? "--"}</span>
+        ),
+      },
+      {
+        accessorKey: "email",
+        header: "Email",
+        cell: ({ row }) => (
+          <span className="text-copy-14 text-gray-900">{row.original.email ?? "--"}</span>
+        ),
+      },
+      {
+        accessorKey: "role",
+        header: "Role",
+        cell: ({ row }) => (
+          <Badge variant="outline" className={roleColors[row.original.role] ?? roleColors.guest}>
+            {row.original.role}
+          </Badge>
+        ),
+      },
+      {
+        accessorKey: "workspaceCount",
+        header: "Workspaces",
+        cell: ({ row }) => (
+          <div className="text-copy-14 text-gray-900 text-right tabular-nums">
+            {row.original.workspaceCount}
+          </div>
+        ),
+      },
+      {
+        accessorKey: "createdAt",
+        header: "Joined",
+        cell: ({ row }) => (
+          <div className="text-copy-13 text-gray-700 text-right">
+            {new Date(row.original.createdAt).toLocaleDateString()}
+          </div>
+        ),
+      },
+    ],
+    [],
+  );
+
   return (
-    <div className="rounded-lg border border-gray-alpha-400 bg-background-100 overflow-hidden">
-      <table className="w-full">
-        <thead>
-          <tr className="border-b border-gray-alpha-400 bg-background-200">
-            <th className="px-4 py-3 text-left text-label-13 font-medium text-gray-900">
-              Name
-            </th>
-            <th className="px-4 py-3 text-left text-label-13 font-medium text-gray-900">
-              Email
-            </th>
-            <th className="px-4 py-3 text-left text-label-13 font-medium text-gray-900">
-              Role
-            </th>
-            <th className="px-4 py-3 text-right text-label-13 font-medium text-gray-900">
-              Workspaces
-            </th>
-            <th className="px-4 py-3 text-right text-label-13 font-medium text-gray-900">
-              Joined
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {stats.userList.map((user) => (
-            <tr
-              key={user.id}
-              className="border-b border-gray-alpha-200 last:border-0 hover:bg-gray-alpha-100 transition-colors"
-            >
-              <td className="px-4 py-3 text-copy-14 text-gray-1000">
-                {user.name ?? "--"}
-              </td>
-              <td className="px-4 py-3 text-copy-14 text-gray-900">
-                {user.email ?? "--"}
-              </td>
-              <td className="px-4 py-3">
-                <Badge variant="outline" className={roleColors[user.role] ?? roleColors.guest}>
-                  {user.role}
-                </Badge>
-              </td>
-              <td className="px-4 py-3 text-copy-14 text-gray-900 text-right tabular-nums">
-                {user.workspaceCount}
-              </td>
-              <td className="px-4 py-3 text-copy-13 text-gray-700 text-right">
-                {new Date(user.createdAt).toLocaleDateString()}
-              </td>
-            </tr>
-          ))}
-          {stats.userList.length === 0 && (
-            <tr>
-              <td
-                colSpan={5}
-                className="px-4 py-8 text-center text-copy-14 text-gray-700"
-              >
-                No users found
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
+    <MainDataTable
+      columns={columns}
+      data={stats.userList}
+      filterColumnId="email"
+      filterPlaceholder="Filter users by email..."
+      enableRowSelection
+      getRowId={(row) => row.id}
+    />
   );
 }
 
 function WorkspacesTab({ stats }: { stats: AdminStats }) {
+  const columns = useMemo<ColumnDef<AdminWorkspaceRow>[]>(
+    () => [
+      {
+        accessorKey: "name",
+        header: "Name",
+        cell: ({ row }) => (
+          <span className="text-copy-14 text-gray-1000 font-medium">{row.original.name}</span>
+        ),
+      },
+      {
+        id: "owner",
+        accessorFn: (row) => row.userEmail ?? row.userName ?? "--",
+        header: "Owner",
+        cell: ({ row }) => (
+          <span className="text-copy-14 text-gray-900">
+            {row.original.userEmail ?? row.original.userName ?? "--"}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "status",
+        header: "Status",
+        cell: ({ row }) => (
+          <Badge variant="outline" className={statusColors[row.original.status] ?? statusColors.stopped}>
+            {row.original.status}
+          </Badge>
+        ),
+      },
+      {
+        accessorKey: "createdAt",
+        header: "Created",
+        cell: ({ row }) => (
+          <div className="text-copy-13 text-gray-700 text-right">
+            {new Date(row.original.createdAt).toLocaleDateString()}
+          </div>
+        ),
+      },
+      {
+        accessorKey: "updatedAt",
+        header: "Updated",
+        cell: ({ row }) => (
+          <div className="text-copy-13 text-gray-700 text-right">
+            {new Date(row.original.updatedAt).toLocaleDateString()}
+          </div>
+        ),
+      },
+    ],
+    [],
+  );
+
   return (
-    <div className="rounded-lg border border-gray-alpha-400 bg-background-100 overflow-hidden">
-      <table className="w-full">
-        <thead>
-          <tr className="border-b border-gray-alpha-400 bg-background-200">
-            <th className="px-4 py-3 text-left text-label-13 font-medium text-gray-900">
-              Name
-            </th>
-            <th className="px-4 py-3 text-left text-label-13 font-medium text-gray-900">
-              Owner
-            </th>
-            <th className="px-4 py-3 text-left text-label-13 font-medium text-gray-900">
-              Status
-            </th>
-            <th className="px-4 py-3 text-right text-label-13 font-medium text-gray-900">
-              Created
-            </th>
-            <th className="px-4 py-3 text-right text-label-13 font-medium text-gray-900">
-              Updated
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {stats.recentWorkspaces.map((ws) => (
-            <tr
-              key={ws.id}
-              className="border-b border-gray-alpha-200 last:border-0 hover:bg-gray-alpha-100 transition-colors"
-            >
-              <td className="px-4 py-3 text-copy-14 text-gray-1000 font-medium">
-                {ws.name}
-              </td>
-              <td className="px-4 py-3 text-copy-14 text-gray-900">
-                {ws.userEmail ?? ws.userName ?? "--"}
-              </td>
-              <td className="px-4 py-3">
-                <Badge variant="outline" className={statusColors[ws.status] ?? statusColors.stopped}>
-                  {ws.status}
-                </Badge>
-              </td>
-              <td className="px-4 py-3 text-copy-13 text-gray-700 text-right">
-                {new Date(ws.createdAt).toLocaleDateString()}
-              </td>
-              <td className="px-4 py-3 text-copy-13 text-gray-700 text-right">
-                {new Date(ws.updatedAt).toLocaleDateString()}
-              </td>
-            </tr>
-          ))}
-          {stats.recentWorkspaces.length === 0 && (
-            <tr>
-              <td
-                colSpan={5}
-                className="px-4 py-8 text-center text-copy-14 text-gray-700"
-              >
-                No workspaces found
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
+    <MainDataTable
+      columns={columns}
+      data={stats.recentWorkspaces}
+      filterColumnId="name"
+      filterPlaceholder="Filter workspaces..."
+      enableRowSelection
+      getRowId={(row) => row.id}
+    />
   );
 }
 
@@ -709,6 +710,74 @@ function SnapshotsTab() {
     rebuildLogLines.length > 0
       ? rebuildLogLines[rebuildLogLines.length - 1]
       : rebuildJob?.stage ?? "queued";
+  const poolColumns = useMemo<ColumnDef<PoolEntryRow>[]>(
+    () => [
+      {
+        accessorKey: "sandboxId",
+        header: "Sandbox ID",
+        cell: ({ row }) => (
+          <span className="text-copy-13 text-gray-1000 font-mono">
+            {row.original.sandboxId.slice(0, 16)}...
+          </span>
+        ),
+      },
+      {
+        accessorKey: "snapshotId",
+        header: "Snapshot",
+        cell: ({ row }) => (
+          <span className="text-copy-13 text-gray-700 font-mono">
+            {row.original.snapshotId === data?.goldenSnapshot.guiSnapshotId ? (
+              <Badge variant="outline" className="border-green-300 bg-green-100 text-green-900">
+                current
+              </Badge>
+            ) : (
+              <span>{row.original.snapshotId.slice(0, 12)}...</span>
+            )}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "status",
+        header: "Status",
+        cell: ({ row }) => (
+          <Badge variant="outline" className={poolStatusColors[row.original.status] ?? poolStatusColors.expired}>
+            {row.original.status}
+          </Badge>
+        ),
+      },
+      {
+        id: "owner",
+        accessorFn: (row) => row.userEmail ?? row.userName ?? "--",
+        header: "Owner",
+        cell: ({ row }) => (
+          <span className="text-copy-13 text-gray-700">
+            {row.original.userEmail ?? row.original.userName ?? "--"}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "createdAt",
+        header: "Created",
+        cell: ({ row }) => (
+          <div className="text-copy-13 text-gray-700 text-right">
+            {new Date(row.original.createdAt).toLocaleString()}
+          </div>
+        ),
+      },
+      {
+        accessorKey: "claimedAt",
+        header: "Claimed",
+        cell: ({ row }) => (
+          <div className="text-copy-13 text-gray-700 text-right">
+            {row.original.claimedAt
+              ? new Date(row.original.claimedAt).toLocaleString()
+              : "--"}
+          </div>
+        ),
+      },
+    ],
+    [data?.goldenSnapshot.guiSnapshotId],
+  );
 
   const fetchData = useCallback(() => {
     setLoading(true);
@@ -756,9 +825,7 @@ function SnapshotsTab() {
             ? `New GUI snapshot created: ${result.snapshotId}`
             : action === "rebuild_cli"
               ? `New CLI snapshot created: ${result.snapshotId}`
-            : action === "replenish"
-              ? `Pool replenished: ${result.created} created (${result.existing} existing, target ${result.target})`
-              : `Pool pruned: ${result.pruned} expired`,
+              : "Action completed",
       });
       fetchData();
     } catch (e) {
@@ -972,24 +1039,6 @@ function SnapshotsTab() {
               <p className="text-copy-14 text-blue-800 tabular-nums">{data.claimStats.fallback}</p>
             </div>
           </div>
-          <div className="pt-2 flex gap-2">
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={actionLoading !== null}
-              onClick={() => runAction("replenish")}
-            >
-              {actionLoading === "replenish" ? <Spinner size="sm" /> : "Replenish Pool"}
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={actionLoading !== null}
-              onClick={() => runAction("prune")}
-            >
-              {actionLoading === "prune" ? <Spinner size="sm" /> : "Prune Stale"}
-            </Button>
-          </div>
         </div>
       </div>
 
@@ -1032,77 +1081,16 @@ function SnapshotsTab() {
             Recent Pool Entries
           </h3>
         </div>
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-gray-alpha-400 bg-background-200">
-              <th className="px-4 py-3 text-left text-label-13 font-medium text-gray-900">
-                Sandbox ID
-              </th>
-              <th className="px-4 py-3 text-left text-label-13 font-medium text-gray-900">
-                Snapshot
-              </th>
-              <th className="px-4 py-3 text-left text-label-13 font-medium text-gray-900">
-                Status
-              </th>
-              <th className="px-4 py-3 text-left text-label-13 font-medium text-gray-900">
-                Owner
-              </th>
-              <th className="px-4 py-3 text-right text-label-13 font-medium text-gray-900">
-                Created
-              </th>
-              <th className="px-4 py-3 text-right text-label-13 font-medium text-gray-900">
-                Claimed
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.recentPoolEntries.map((entry) => (
-              <tr
-                key={entry.id}
-                className="border-b border-gray-alpha-200 last:border-0 hover:bg-gray-alpha-100 transition-colors"
-              >
-                <td className="px-4 py-3 text-copy-13 text-gray-1000 font-mono">
-                  {entry.sandboxId.slice(0, 16)}...
-                </td>
-                <td className="px-4 py-3 text-copy-13 text-gray-700 font-mono">
-                  {entry.snapshotId === data.goldenSnapshot.guiSnapshotId ? (
-                    <Badge variant="outline" className="border-green-300 bg-green-100 text-green-900">
-                      current
-                    </Badge>
-                  ) : (
-                    <span>{entry.snapshotId.slice(0, 12)}...</span>
-                  )}
-                </td>
-                <td className="px-4 py-3">
-                  <Badge variant="outline" className={poolStatusColors[entry.status] ?? poolStatusColors.expired}>
-                    {entry.status}
-                  </Badge>
-                </td>
-                <td className="px-4 py-3 text-copy-13 text-gray-700">
-                  {entry.userEmail ?? entry.userName ?? "--"}
-                </td>
-                <td className="px-4 py-3 text-copy-13 text-gray-700 text-right">
-                  {new Date(entry.createdAt).toLocaleString()}
-                </td>
-                <td className="px-4 py-3 text-copy-13 text-gray-700 text-right">
-                  {entry.claimedAt
-                    ? new Date(entry.claimedAt).toLocaleString()
-                    : "--"}
-                </td>
-              </tr>
-            ))}
-            {data.recentPoolEntries.length === 0 && (
-              <tr>
-                <td
-                  colSpan={6}
-                  className="px-4 py-8 text-center text-copy-14 text-gray-700"
-                >
-                  No pool entries
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+        <div className="p-4">
+          <MainDataTable
+            columns={poolColumns}
+            data={data.recentPoolEntries}
+            filterColumnId="sandboxId"
+            filterPlaceholder="Filter pool entries by sandbox..."
+            enableRowSelection
+            getRowId={(row) => row.id}
+          />
+        </div>
       </div>
     </div>
   );
