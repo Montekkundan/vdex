@@ -20,7 +20,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SIZE_PROFILES, DISPLAY_CLIENTS, EXPERIENCES, PROVIDERS } from "@/lib/runtime/profiles";
+import { Info } from "lucide-react";
 
 const GUI_APP_TEMPLATES: Array<{ id: string; label: string; script: string }> = [
   {
@@ -348,7 +350,27 @@ export function ProfilesClient() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Warm Pool Policies</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              Warm Pool Policies
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex h-5 w-5 items-center justify-center rounded-full text-gray-700 transition hover:bg-gray-alpha-200 hover:text-gray-1000"
+                    aria-label="What warm pool policies do"
+                  >
+                    <Info className="h-4 w-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent
+                  side="top"
+                  sideOffset={8}
+                  className="max-w-sm text-copy-12 leading-relaxed select-none"
+                >
+                  Warm pool keeps pre-booted background sandboxes for the exact profile bucket you choose. When you launch with a matching profile, startup is usually faster (hit). If no warm entry is ready, launch still works with a normal cold boot (miss).
+                </TooltipContent>
+              </Tooltip>
+            </CardTitle>
             <CardDescription>
               Buckets used: {policies.length}/{policyLimits.maxPoolBucketsPerUser} · Total target capped at{" "}
               {policyLimits.maxWarmEntriesPerUserTotal}

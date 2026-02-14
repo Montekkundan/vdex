@@ -314,18 +314,5 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, started: true, job }, { status: 202 });
   }
 
-  if (action === "replenish") {
-    await expireOldSnapshotVMs();
-    await prunePool();
-    const result = await replenishPool();
-    return NextResponse.json({ ok: true, ...result });
-  }
-
-  if (action === "prune") {
-    await expireOldSnapshotVMs();
-    const pruned = await prunePool();
-    return NextResponse.json({ ok: true, pruned });
-  }
-
   return NextResponse.json({ error: "Unknown action" }, { status: 400 });
 }
