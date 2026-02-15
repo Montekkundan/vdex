@@ -16,18 +16,8 @@ function readEnvInt(name: string, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function readEnvBool(name: string, fallback: boolean): boolean {
-  const raw = process.env[name];
-  if (!raw) return fallback;
-  return ["1", "true", "yes", "on"].includes(raw.toLowerCase());
-}
-
 const DEFAULT_WARM_POOL_TARGET = process.env.NODE_ENV === "production" ? 15 : 0;
 const WARM_POOL_TARGET = readEnvInt("WARM_POOL_TARGET", DEFAULT_WARM_POOL_TARGET);
-const WARM_POOL_AUTO_REPLENISH = readEnvBool(
-  "WARM_POOL_AUTO_REPLENISH",
-  process.env.NODE_ENV === "production",
-);
 const WARM_VM_MAX_AGE_MS = 45 * 60 * 1000; // 45 min (matches sandbox timeout cap)
 
 export interface ClaimWarmOptions {
@@ -329,26 +319,6 @@ export async function expireOldSnapshotVMs(): Promise<number> {
     .returning();
 
   return expired.length;
-}
-
-/**
- * Trigger a background replenish. Fire-and-forget via internal API call
- * so it doesn't block the current request.
- */
-export function triggerBackgroundReplenish(baseUrl: string): void {
-  if (!WARM_POOL_AUTO_REPLENISH || WARM_POOL_TARGET <= 0) {
-    return;
-  }
-
-  const url = `${baseUrl}/api/pool/replenish`;
-  fetch(url, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${process.env.CRON_SECRET}`,
-    },
-  }).catch((err) => {
-    console.error("[warm-pool] Background replenish failed:", err);
-  });
 }
 
 /**

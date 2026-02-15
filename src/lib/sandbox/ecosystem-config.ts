@@ -634,7 +634,7 @@ elif command -v x0vncserver >/dev/null 2>&1; then
   sleep 0.5
   x0vncserver -display ${VNC_DISPLAY} -rfbport 5901 -SecurityTypes None -localhost -fg &
 elif command -v Xvnc >/dev/null 2>&1; then
-  Xvnc ${VNC_DISPLAY} -geometry 1920x1080 -depth 24 -rfbport 5901 -localhost -SecurityTypes None -fg &
+  Xvnc ${VNC_DISPLAY} -geometry 1920x1080 -depth 24 -rfbport 5901 -localhost -SecurityTypes None &
 else
   echo "No VNC server found (x11vnc, x0vncserver, or Xvnc required)" >&2
   exit 1
@@ -697,7 +697,7 @@ elif command -v x0vncserver >/dev/null 2>&1; then
   sleep 0.5
   x0vncserver -display ${VNC_DISPLAY} -rfbport 5901 -SecurityTypes None -localhost -fg &
 elif command -v Xvnc >/dev/null 2>&1; then
-  Xvnc ${VNC_DISPLAY} -geometry 1920x1080 -depth 24 -rfbport 5901 -localhost -SecurityTypes None -fg &
+  Xvnc ${VNC_DISPLAY} -geometry 1920x1080 -depth 24 -rfbport 5901 -localhost -SecurityTypes None &
 else
   echo "No VNC server found (x11vnc, x0vncserver, or Xvnc required)" >&2
   exit 1
@@ -774,7 +774,7 @@ elif command -v x0vncserver >/dev/null 2>&1; then
   sleep 0.5
   x0vncserver -display ${KASM_DISPLAY} -rfbport 5902 -SecurityTypes None -localhost -fg &
 elif command -v Xvnc >/dev/null 2>&1; then
-  Xvnc ${KASM_DISPLAY} -geometry 1920x1080 -depth 24 -rfbport 5902 -localhost -SecurityTypes None -fg &
+  Xvnc ${KASM_DISPLAY} -geometry 1920x1080 -depth 24 -rfbport 5902 -localhost -SecurityTypes None &
 else
   echo "No VNC server found (x11vnc, x0vncserver, or Xvnc required)" >&2
   exit 1
@@ -840,7 +840,7 @@ elif command -v x0vncserver >/dev/null 2>&1; then
   sleep 0.5
   x0vncserver -display ${RDP_DISPLAY} -rfbport 5903 -SecurityTypes None -localhost -fg &
 elif command -v Xvnc >/dev/null 2>&1; then
-  Xvnc ${RDP_DISPLAY} -geometry 1920x1080 -depth 24 -rfbport 5903 -localhost -SecurityTypes None -fg &
+  Xvnc ${RDP_DISPLAY} -geometry 1920x1080 -depth 24 -rfbport 5903 -localhost -SecurityTypes None &
 else
   echo "No VNC server found (x11vnc, x0vncserver, or Xvnc required)" >&2
   exit 1

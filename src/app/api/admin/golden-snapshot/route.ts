@@ -244,28 +244,88 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   const action = body.action as string;
 
-  if (action === "rebuild" || action === "rebuild_gui") {
-    const result = await buildGoldenSnapshot({
-      installScript: body.installScript,
-      logPrefix: "admin:golden-snapshot",
-      experience: "gui",
-    });
+  if (action === "rebuild" || action === "rebuild_gui" || action === "rebuild_cli") {
+    const isCli = action === "rebuild_cli";
+    const experience = isCli ? "cli" : "gui";
+    const label = isCli ? "cli" : "gui";
+    const logPrefix = isCli ? "admin:golden-snapshot:cli" : "admin:golden-snapshot:gui";
 
-    await expireOldSnapshotVMs();
-    await prunePool();
-    const pool = await replenishPool();
+    const [job] = await db
+      .insert(snapshotRebuildJobs)
+      .values({
+        status: "running",
+        progress: 0,
+        stage: `queued_${label}`,
+        message: `[job] Queued rebuild ${label}\n`,
+        updatedAt: new Date(),
+      })
+      .returning();
 
-    return NextResponse.json({ ok: true, ...result, pool });
-  }
+    try {
+      await appendRebuildJobLog(job.id, `[job] Rebuild ${label} started`);
+      await updateRebuildJob(job.id, {
+        status: "running",
+        progress: 10,
+        stage: `rebuilding_${label}`,
+      });
+      await appendRebuildJobLog(job.id, `[job] Rebuilding ${label.toUpperCase()} snapshot`);
 
-  if (action === "rebuild_cli") {
-    const result = await buildGoldenSnapshot({
-      installScript: body.installScript,
-      logPrefix: "admin:golden-snapshot:cli",
-      experience: "cli",
-    });
+      const result = await buildGoldenSnapshot({
+        installScript: body.installScript,
+        logPrefix,
+        experience,
+        persistAsPlatformDefault: true,
+        onLog: async (line) => appendRebuildJobLog(job.id, line),
+      });
 
-    return NextResponse.json({ ok: true, ...result });
+      let pool: Awaited<ReturnType<typeof replenishPool>> | undefined;
+      if (!isCli) {
+        await updateRebuildJob(job.id, {
+          progress: 80,
+          stage: "refreshing_pool",
+          guiSnapshotId: result.snapshotId,
+        });
+        await appendRebuildJobLog(job.id, "[job] Refreshing warm pool");
+        await expireOldSnapshotVMs();
+        await prunePool();
+        pool = await replenishPool();
+        await appendRebuildJobLog(job.id, "[job] Warm pool refresh done");
+      } else {
+        await updateRebuildJob(job.id, {
+          progress: 90,
+          stage: "finalizing_cli",
+          cliSnapshotId: result.snapshotId,
+        });
+      }
+
+      await updateRebuildJob(job.id, {
+        status: "succeeded",
+        progress: 100,
+        stage: "completed",
+        guiSnapshotId: isCli ? null : result.snapshotId,
+        cliSnapshotId: isCli ? result.snapshotId : null,
+        finishedAt: new Date(),
+      });
+      await appendRebuildJobLog(job.id, `[job] Rebuild ${label} completed`);
+
+      return NextResponse.json({ ok: true, ...result, pool, jobId: job.id });
+    } catch (err) {
+      await appendRebuildJobLog(
+        job.id,
+        `[job] Rebuild ${label} failed: ${err instanceof Error ? err.message : "Unknown error"}`,
+      );
+      await updateRebuildJob(job.id, {
+        status: "failed",
+        progress: 100,
+        stage: "failed",
+        error: err instanceof Error ? err.message : "Unknown error",
+        finishedAt: new Date(),
+      });
+      return NextResponse.json(
+        { error: err instanceof Error ? err.message : "Rebuild failed" },
+        { status: 500 },
+      );
+    }
   }
 
   if (action === "rebuild_all") {

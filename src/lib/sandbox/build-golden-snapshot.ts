@@ -283,6 +283,27 @@ INSTALLS_EOF
 else
   echo "Firefox not found, skipping profile setup"
 fi
+  `;
+
+  const cargoPathScript = `
+set -euo pipefail
+
+# Ensure Cargo-installed binaries (e.g. viu) are available in login shells
+sudo tee /etc/profile.d/sandbox-cargo-path.sh > /dev/null << 'CARGOPATHEOF'
+if [ -d "$HOME/.cargo/bin" ]; then
+  case ":$PATH:" in
+    *":$HOME/.cargo/bin:"*) ;;
+    *) export PATH="$HOME/.cargo/bin:$PATH" ;;
+  esac
+fi
+CARGOPATHEOF
+
+# Also persist in user shell rc/profile files for non-login shell sessions
+for rc in "$HOME/.profile" "$HOME/.bash_profile" "$HOME/.bashrc"; do
+  touch "$rc"
+  grep -q 'export PATH="$HOME/.cargo/bin:$PATH"' "$rc" || \
+    echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> "$rc"
+done
 `;
 
   const displayDepsScript = `
@@ -370,13 +391,17 @@ echo "  vnc backend: $VNC_BIN"
         return runStep(
           "CLI base packages",
           [
-            "sudo dnf install -y git python3 python3-pip tmux jq tree wget unzip tar gzip xz vim-enhanced",
+            "sudo dnf install -y git python3 python3-pip tmux jq tree wget unzip tar gzip xz vim-enhanced cargo rust gcc gcc-c++ make",
             "sudo ln -sf /usr/bin/vim /usr/local/bin/vi",
           ].join(" && "),
         );
       },
-      async npmGlobals() {
+      async cargoPath() {
         await this.$.cliBasePackages;
+        return runStep("Configure Cargo PATH", cargoPathScript);
+      },
+      async npmGlobals() {
+        await this.$.cargoPath;
         return runStep(
           "pm2 + Bun + pnpm",
           [
@@ -477,8 +502,9 @@ echo "  vnc backend: $VNC_BIN"
         "SPAL repo + system tools + X11/GTK4 deps + desktop apps",
         [
           "sudo dnf install -y spal-release",
-            "sudo dnf install -y vim-enhanced wget jq tree tmux cpio" +
+            "sudo dnf install -y vim-enhanced wget jq tree tmux cpio gcc gcc-c++ make" +
             " xorg-x11-server-Xvfb xorg-x11-server-Xorg xorg-x11-drv-dummy mesa-dri-drivers dbus-x11 xdg-utils git python3-pip xterm xorg-x11-fonts-misc xorg-x11-fonts-Type1 xorg-x11-fonts-100dpi" +
+            " cargo rust" +
             " mesa-libEGL mesa-libGLES mesa-libgbm libglvnd-egl libglvnd-gles" +
             " gstreamer1 gstreamer1-plugins-base gstreamer1-plugins-good" +
             " firefox nautilus gnome-calculator gnome-text-editor" +
@@ -512,6 +538,10 @@ echo "  vnc backend: $VNC_BIN"
     async sysConfig() {
       await this.$.dnfPackages;
       return runStep("System config files", sysConfigScript);
+    },
+    async cargoPath() {
+      await this.$.dnfPackages;
+      return runStep("Configure Cargo PATH", cargoPathScript);
     },
 
     // Firefox profile setup — needs firefox binary from dnf
@@ -565,6 +595,7 @@ echo "  vnc backend: $VNC_BIN"
 
     // npm globals: pm2, Claude Code, OpenCode, Bun (independent of dnf)
     async npmGlobals() {
+      await this.$.cargoPath;
       return runStep(
         "pm2 + Bun + pnpm",
         [

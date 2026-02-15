@@ -118,13 +118,17 @@ export async function createSandbox(
       });
       usedSnapshot = true;
     } catch (err: unknown) {
+      const errorText =
+        typeof (err as { text?: unknown })?.text === "string"
+          ? ((err as { text: string }).text || "")
+          : "";
+      const errorMessage = err instanceof Error ? err.message : "";
       const isNotFound =
-        err instanceof Error &&
-        (err.message.includes("404") ||
-          err.message.includes("not found") ||
-          err.message.includes("Not Found") ||
-          (typeof (err as unknown as Record<string, unknown>).text === "string" &&
-            ((err as unknown as Record<string, unknown>).text as string).includes("not_found")));
+        errorMessage.includes("404") ||
+        errorMessage.includes("not found") ||
+        errorMessage.includes("Not Found") ||
+        errorText.includes("not_found") ||
+        errorText.toLowerCase().includes("snapshot expired or deleted");
 
       if (isNotFound) {
         console.warn(
