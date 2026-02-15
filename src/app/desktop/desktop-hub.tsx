@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { ColumnDef } from "@tanstack/react-table";
 import { mutateWorkspaces, useSnapshots, useWorkspaces } from "@/lib/hooks/use-swr-hooks";
-import { DISPLAY_CLIENTS, EXPERIENCES, PROVIDERS, SIZE_PROFILES } from "@/lib/runtime/profiles";
+import { DISPLAY_CLIENTS, EXPERIENCES, SIZE_PROFILES } from "@/lib/runtime/profiles";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 import { slugify } from "@/lib/workspace-slug";
 import { Button } from "@/components/ui/button";
@@ -423,7 +423,7 @@ export function DesktopHub() {
           <DialogHeader>
             <DialogTitle>Create VM</DialogTitle>
             <DialogDescription>
-              Configure provider, display client, and size profile.
+              Configure display client and size profile.
             </DialogDescription>
           </DialogHeader>
 
@@ -459,26 +459,12 @@ export function DesktopHub() {
 
             <div className="space-y-1">
               <label className="text-copy-12 text-gray-800">Provider</label>
-              <Select
-                value={newWorkspaceProvider}
-                onValueChange={(value) => setNewWorkspaceProvider(value as ProviderId)}
-              >
+              <Select value={newWorkspaceProvider} disabled>
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select provider" />
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.values(PROVIDERS).map((provider) => (
-                    <SelectItem
-                      key={provider.id}
-                      value={provider.id}
-                      disabled={!provider.enabled}
-                    >
-                      {provider.label}
-                      {!provider.enabled && provider.reason
-                        ? ` (Unavailable: ${provider.reason})`
-                        : ""}
-                    </SelectItem>
-                  ))}
+                  <SelectItem value="vercel">Vercel Sandbox</SelectItem>
                 </SelectContent>
               </Select>
             </div>

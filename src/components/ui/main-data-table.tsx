@@ -27,7 +27,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -62,7 +68,6 @@ export function MainDataTable<TData, TValue>({
   initialPageSize = 10,
   className,
 }: MainDataTableProps<TData, TValue>) {
-  const pageSizeSelectId = React.useId();
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
@@ -170,7 +175,7 @@ export function MainDataTable<TData, TValue>({
         </DropdownMenu>
       </div>
 
-      <div className="overflow-hidden rounded-md border border-gray-alpha-400 bg-background-100">
+      <div className="overflow-hidden rounded-md border bg-background">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
@@ -236,7 +241,7 @@ export function MainDataTable<TData, TValue>({
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="text-copy-13 text-gray-700">
+        <div className="text-sm text-muted-foreground">
           {enableRowSelection ? (
             <>
               {table.getFilteredSelectedRowModel().rows.length} of {table.getFilteredRowModel().rows.length} row(s) selected.
@@ -249,20 +254,22 @@ export function MainDataTable<TData, TValue>({
         </div>
 
         <div className="ml-auto flex items-center gap-2">
-          <label className="text-copy-13 text-gray-700" htmlFor={pageSizeSelectId}>
-            Rows
-          </label>
-          <NativeSelect
-            id={pageSizeSelectId}
+          <span className="text-sm text-muted-foreground">Rows</span>
+          <Select
             value={String(table.getState().pagination.pageSize)}
-            onChange={(event) => table.setPageSize(Number(event.target.value))}
+            onValueChange={(value) => table.setPageSize(Number(value))}
           >
-            {[5, 10, 20, 50].map((size) => (
-              <NativeSelectOption key={size} value={String(size)}>
-                {size}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
+            <SelectTrigger className="h-8 min-w-16">
+              <SelectValue placeholder="Rows" />
+            </SelectTrigger>
+            <SelectContent align="end">
+              {[5, 10, 20, 50].map((size) => (
+                <SelectItem key={size} value={String(size)}>
+                  {size}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
           <Button
             variant="outline"
