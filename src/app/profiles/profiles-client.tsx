@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import {
   buildSnapshotMutate,
   captureSnapshotMutate,
@@ -21,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { PageHeader } from "@/components/layout/page-header";
 import { SIZE_PROFILES, DISPLAY_CLIENTS, EXPERIENCES, PROVIDERS } from "@/lib/runtime/profiles";
 import { Info } from "lucide-react";
 
@@ -116,19 +118,22 @@ export function ProfilesClient() {
   return (
     <main className="min-h-screen bg-background-100 p-6 sm:p-8">
       <div className="mx-auto w-full max-w-6xl space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-heading-24 text-gray-1000">Profiles</h1>
-            <p className="text-copy-13 text-gray-700">
-              Manage your snapshots and warm-pool policies.
-            </p>
-          </div>
-          <div className="flex gap-4 text-copy-13 text-gray-700">
-            <span>Available: {stats.available}</span>
-            <span>Claimed: {stats.claimed}</span>
-            <span>Expired: {stats.expired}</span>
-          </div>
-        </div>
+        <PageHeader
+          title="Profiles"
+          description="Manage your snapshots and warm-pool policies."
+          actions={
+            <>
+              <div className="flex gap-4 text-copy-13 text-gray-700">
+                <span>Available: {stats.available}</span>
+                <span>Claimed: {stats.claimed}</span>
+                <span>Expired: {stats.expired}</span>
+              </div>
+              <Button asChild variant="secondary">
+                <Link href="/desktop">Desktop</Link>
+              </Button>
+            </>
+          }
+        />
 
         <Card>
           <CardHeader>

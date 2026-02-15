@@ -13,7 +13,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { WorkspaceIcon } from "@/components/workspace-icon";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { UserProfile } from "@/components/user-profile";
+import { PageHeader } from "@/components/layout/page-header";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
@@ -362,15 +362,11 @@ export function DesktopHub() {
   return (
     <main className="min-h-screen bg-background-100 p-6 sm:p-8">
       <div className="mx-auto w-full max-w-5xl space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-heading-24 text-gray-1000">Workspaces</h1>
-            <p className="text-copy-13 text-gray-700">
-              Create, switch, and manage your VMs.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <UserProfile />
+        <PageHeader
+          title="Workspaces"
+          description="Create, switch, and manage your VMs."
+          actions={
+            <>
             <Button asChild variant="secondary">
               <Link href="/profiles">Profiles</Link>
             </Button>
@@ -380,8 +376,9 @@ export function DesktopHub() {
             >
               New VM
             </Button>
-          </div>
-        </div>
+            </>
+          }
+        />
 
         <Card className="bg-background-200">
           <CardHeader>

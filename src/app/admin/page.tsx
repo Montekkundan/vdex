@@ -122,7 +122,7 @@ type PoolEntryRow = SnapshotData["recentPoolEntries"][number];
 
 const statusColors: Record<string, string> = {
   active: "border-green-300 bg-green-100 text-green-900",
-  stopped: "border-gray-alpha-300 bg-gray-alpha-100 text-gray-900",
+  stopped: "border bg-muted text-foreground",
   snapshotted: "border-blue-300 bg-blue-100 text-blue-900",
   creating: "border-amber-300 bg-amber-100 text-amber-900",
   error: "border-red-300 bg-red-100 text-red-900",
@@ -131,7 +131,7 @@ const statusColors: Record<string, string> = {
 const roleColors: Record<string, string> = {
   admin: "border-purple-300 bg-purple-100 text-purple-900",
   user: "border-blue-300 bg-blue-100 text-blue-900",
-  guest: "border-gray-alpha-300 bg-gray-alpha-100 text-gray-900",
+  guest: "border bg-muted text-foreground",
 };
 
 function StatCard({
@@ -144,13 +144,13 @@ function StatCard({
   subtitle?: string;
 }) {
   return (
-    <div className="rounded-lg border border-gray-alpha-400 bg-background-100 p-5">
-      <p className="text-copy-13 text-gray-900">{title}</p>
-      <p className="mt-1 text-[28px] font-semibold tracking-tight text-gray-1000">
+    <div className="rounded-lg border border bg-background p-5">
+      <p className="text-copy-13 text-foreground">{title}</p>
+      <p className="mt-1 text-[28px] font-semibold tracking-tight text-foreground">
         {value}
       </p>
       {subtitle && (
-        <p className="mt-1 text-copy-13 text-gray-700">{subtitle}</p>
+        <p className="mt-1 text-copy-13 text-muted-foreground">{subtitle}</p>
       )}
     </div>
   );
@@ -165,14 +165,14 @@ function BarChart({
 }) {
   const max = Math.max(...data.map((d) => d.value), 1);
   return (
-    <div className="rounded-lg border border-gray-alpha-400 bg-background-100 p-5">
-      <h3 className="text-label-14 font-medium text-gray-1000 mb-4">
+    <div className="rounded-lg border border bg-background p-5">
+      <h3 className="text-label-14 font-medium text-foreground mb-4">
         {title}
       </h3>
       <div className="flex items-end gap-3 h-40">
         {data.map((d) => (
           <div key={d.label} className="flex flex-1 flex-col items-center gap-2">
-            <span className="text-copy-13 text-gray-900 font-medium tabular-nums">
+            <span className="text-copy-13 text-foreground font-medium tabular-nums">
               {d.value}
             </span>
             <div className="w-full flex justify-center">
@@ -184,7 +184,7 @@ function BarChart({
                 }}
               />
             </div>
-            <span className="text-[11px] text-gray-700 text-center leading-tight">
+            <span className="text-[11px] text-muted-foreground text-center leading-tight">
               {d.label}
             </span>
           </div>
@@ -203,11 +203,11 @@ function AreaChart({
 }) {
   if (data.length === 0) {
     return (
-      <div className="rounded-lg border border-gray-alpha-400 bg-background-100 p-5">
-        <h3 className="text-label-14 font-medium text-gray-1000 mb-4">
+      <div className="rounded-lg border border bg-background p-5">
+        <h3 className="text-label-14 font-medium text-foreground mb-4">
           {title}
         </h3>
-        <p className="text-copy-13 text-gray-700">No data yet</p>
+        <p className="text-copy-13 text-muted-foreground">No data yet</p>
       </div>
     );
   }
@@ -228,8 +228,8 @@ function AreaChart({
   const areaPath = `${linePath} L ${points[points.length - 1].x} ${padding.top + chartH} L ${points[0].x} ${padding.top + chartH} Z`;
 
   return (
-    <div className="rounded-lg border border-gray-alpha-400 bg-background-100 p-5">
-      <h3 className="text-label-14 font-medium text-gray-1000 mb-4">
+    <div className="rounded-lg border border bg-background p-5">
+      <h3 className="text-label-14 font-medium text-foreground mb-4">
         {title}
       </h3>
       <svg
@@ -244,7 +244,7 @@ function AreaChart({
             x2={width - padding.right}
             y1={padding.top + chartH * (1 - tick)}
             y2={padding.top + chartH * (1 - tick)}
-            stroke="var(--ds-gray-alpha-200)"
+            stroke="hsl(var(--border))"
             strokeWidth="1"
           />
         ))}
@@ -276,7 +276,7 @@ function AreaChart({
               y={height - 5}
               textAnchor="middle"
               fontSize="9"
-              fill="var(--ds-gray-700)"
+              fill="hsl(var(--muted-foreground))"
             >
               {new Date(d.date).toLocaleDateString("en-US", {
                 month: "short",
@@ -293,7 +293,7 @@ function AreaChart({
               y={height - 5}
               textAnchor="middle"
               fontSize="9"
-              fill="var(--ds-gray-700)"
+              fill="hsl(var(--muted-foreground))"
             >
               {new Date(data[i].date).toLocaleDateString("en-US", {
                 month: "short",
@@ -316,11 +316,11 @@ function DonutChart({
   const total = data.reduce((sum, d) => sum + d.value, 0);
   if (total === 0) {
     return (
-      <div className="rounded-lg border border-gray-alpha-400 bg-background-100 p-5">
-        <h3 className="text-label-14 font-medium text-gray-1000 mb-4">
+      <div className="rounded-lg border border bg-background p-5">
+        <h3 className="text-label-14 font-medium text-foreground mb-4">
           {title}
         </h3>
-        <p className="text-copy-13 text-gray-700">No data yet</p>
+        <p className="text-copy-13 text-muted-foreground">No data yet</p>
       </div>
     );
   }
@@ -350,8 +350,8 @@ function DonutChart({
   ).arcs;
 
   return (
-    <div className="rounded-lg border border-gray-alpha-400 bg-background-100 p-5">
-      <h3 className="text-label-14 font-medium text-gray-1000 mb-4">
+    <div className="rounded-lg border border bg-background p-5">
+      <h3 className="text-label-14 font-medium text-foreground mb-4">
         {title}
       </h3>
       <div className="flex items-center gap-6">
@@ -380,7 +380,7 @@ function DonutChart({
             dominantBaseline="central"
             fontSize="24"
             fontWeight="600"
-            fill="var(--ds-gray-1000)"
+            fill="hsl(var(--foreground))"
           >
             {total}
           </text>
@@ -392,10 +392,10 @@ function DonutChart({
                 className="h-3 w-3 rounded-full"
                 style={{ backgroundColor: d.color }}
               />
-              <span className="text-copy-13 text-gray-900">
+              <span className="text-copy-13 text-foreground">
                 {d.label}
               </span>
-              <span className="text-copy-13 text-gray-700 tabular-nums">
+              <span className="text-copy-13 text-muted-foreground tabular-nums">
                 {d.value}
               </span>
             </div>
@@ -441,7 +441,7 @@ export default function AdminPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex gap-1 border-b border-gray-alpha-400">
+      <div className="flex gap-1 border-b border">
         {(["overview", "users", "workspaces", "snapshots"] as const).map((t) => (
           <button
             key={t}
@@ -449,8 +449,8 @@ export default function AdminPage() {
             className={cn(
               "px-4 py-2 text-copy-14 font-medium capitalize transition-colors border-b-2 -mb-px cursor-pointer",
               tab === t
-                ? "border-gray-1000 text-gray-1000"
-                : "border-transparent text-gray-700 hover:text-gray-900"
+                ? "border-foreground text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
             )}
           >
             {t}
@@ -469,7 +469,7 @@ export default function AdminPage() {
 function OverviewTab({ stats }: { stats: AdminStats }) {
   const chartColors = {
     active: "var(--ds-green-600)",
-    stopped: "var(--ds-gray-600)",
+    stopped: "hsl(var(--muted-foreground))",
     snapshotted: "var(--ds-blue-600)",
     creating: "var(--ds-amber-600)",
     error: "var(--ds-red-600)",
@@ -478,7 +478,7 @@ function OverviewTab({ stats }: { stats: AdminStats }) {
   const roleChartColors = {
     admin: "var(--ds-purple-600)",
     user: "var(--ds-blue-600)",
-    guest: "var(--ds-gray-500)",
+    guest: "hsl(var(--muted-foreground))",
   };
 
   return (
@@ -515,7 +515,7 @@ function OverviewTab({ stats }: { stats: AdminStats }) {
             value: d.count,
             color:
               chartColors[d.status as keyof typeof chartColors] ??
-              "var(--ds-gray-500)",
+              "hsl(var(--muted-foreground))",
           }))}
         />
       </div>
@@ -557,7 +557,7 @@ function OverviewTab({ stats }: { stats: AdminStats }) {
             {
               label: "Expired",
               value: stats.warmPool.expired,
-              color: "var(--ds-gray-600)",
+              color: "hsl(var(--muted-foreground))",
             },
           ]}
         />
@@ -573,14 +573,14 @@ function UsersTab({ stats }: { stats: AdminStats }) {
         accessorKey: "name",
         header: "Name",
         cell: ({ row }) => (
-          <span className="text-copy-14 text-gray-1000">{row.original.name ?? "--"}</span>
+          <span className="text-copy-14 text-foreground">{row.original.name ?? "--"}</span>
         ),
       },
       {
         accessorKey: "email",
         header: "Email",
         cell: ({ row }) => (
-          <span className="text-copy-14 text-gray-900">{row.original.email ?? "--"}</span>
+          <span className="text-copy-14 text-foreground">{row.original.email ?? "--"}</span>
         ),
       },
       {
@@ -596,7 +596,7 @@ function UsersTab({ stats }: { stats: AdminStats }) {
         accessorKey: "workspaceCount",
         header: "Workspaces",
         cell: ({ row }) => (
-          <div className="text-copy-14 text-gray-900 text-right tabular-nums">
+          <div className="text-copy-14 text-foreground text-right tabular-nums">
             {row.original.workspaceCount}
           </div>
         ),
@@ -605,7 +605,7 @@ function UsersTab({ stats }: { stats: AdminStats }) {
         accessorKey: "createdAt",
         header: "Joined",
         cell: ({ row }) => (
-          <div className="text-copy-13 text-gray-700 text-right">
+          <div className="text-copy-13 text-muted-foreground text-right">
             {new Date(row.original.createdAt).toLocaleDateString()}
           </div>
         ),
@@ -633,7 +633,7 @@ function WorkspacesTab({ stats }: { stats: AdminStats }) {
         accessorKey: "name",
         header: "Name",
         cell: ({ row }) => (
-          <span className="text-copy-14 text-gray-1000 font-medium">{row.original.name}</span>
+          <span className="text-copy-14 text-foreground font-medium">{row.original.name}</span>
         ),
       },
       {
@@ -641,7 +641,7 @@ function WorkspacesTab({ stats }: { stats: AdminStats }) {
         accessorFn: (row) => row.userEmail ?? row.userName ?? "--",
         header: "Owner",
         cell: ({ row }) => (
-          <span className="text-copy-14 text-gray-900">
+          <span className="text-copy-14 text-foreground">
             {row.original.userEmail ?? row.original.userName ?? "--"}
           </span>
         ),
@@ -659,7 +659,7 @@ function WorkspacesTab({ stats }: { stats: AdminStats }) {
         accessorKey: "createdAt",
         header: "Created",
         cell: ({ row }) => (
-          <div className="text-copy-13 text-gray-700 text-right">
+          <div className="text-copy-13 text-muted-foreground text-right">
             {new Date(row.original.createdAt).toLocaleDateString()}
           </div>
         ),
@@ -668,7 +668,7 @@ function WorkspacesTab({ stats }: { stats: AdminStats }) {
         accessorKey: "updatedAt",
         header: "Updated",
         cell: ({ row }) => (
-          <div className="text-copy-13 text-gray-700 text-right">
+          <div className="text-copy-13 text-muted-foreground text-right">
             {new Date(row.original.updatedAt).toLocaleDateString()}
           </div>
         ),
@@ -692,7 +692,7 @@ function WorkspacesTab({ stats }: { stats: AdminStats }) {
 const poolStatusColors: Record<string, string> = {
   available: "border-green-300 bg-green-100 text-green-900",
   claimed: "border-blue-300 bg-blue-100 text-blue-900",
-  expired: "border-gray-alpha-300 bg-gray-alpha-100 text-gray-900",
+  expired: "border bg-muted text-foreground",
 };
 
 function SnapshotsTab() {
@@ -716,7 +716,7 @@ function SnapshotsTab() {
         accessorKey: "sandboxId",
         header: "Sandbox ID",
         cell: ({ row }) => (
-          <span className="text-copy-13 text-gray-1000 font-mono">
+          <span className="text-copy-13 text-foreground font-mono">
             {row.original.sandboxId.slice(0, 16)}...
           </span>
         ),
@@ -725,7 +725,7 @@ function SnapshotsTab() {
         accessorKey: "snapshotId",
         header: "Snapshot",
         cell: ({ row }) => (
-          <span className="text-copy-13 text-gray-700 font-mono">
+          <span className="text-copy-13 text-muted-foreground font-mono">
             {row.original.snapshotId === data?.goldenSnapshot.guiSnapshotId ? (
               <Badge variant="outline" className="border-green-300 bg-green-100 text-green-900">
                 current
@@ -750,7 +750,7 @@ function SnapshotsTab() {
         accessorFn: (row) => row.userEmail ?? row.userName ?? "--",
         header: "Owner",
         cell: ({ row }) => (
-          <span className="text-copy-13 text-gray-700">
+          <span className="text-copy-13 text-muted-foreground">
             {row.original.userEmail ?? row.original.userName ?? "--"}
           </span>
         ),
@@ -759,7 +759,7 @@ function SnapshotsTab() {
         accessorKey: "createdAt",
         header: "Created",
         cell: ({ row }) => (
-          <div className="text-copy-13 text-gray-700 text-right">
+          <div className="text-copy-13 text-muted-foreground text-right">
             {new Date(row.original.createdAt).toLocaleString()}
           </div>
         ),
@@ -768,7 +768,7 @@ function SnapshotsTab() {
         accessorKey: "claimedAt",
         header: "Claimed",
         cell: ({ row }) => (
-          <div className="text-copy-13 text-gray-700 text-right">
+          <div className="text-copy-13 text-muted-foreground text-right">
             {row.original.claimedAt
               ? new Date(row.original.claimedAt).toLocaleString()
               : "--"}
@@ -870,48 +870,48 @@ function SnapshotsTab() {
       )}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div className="rounded-lg border border-gray-alpha-400 bg-background-100 p-5 space-y-4">
-          <h3 className="text-label-14 font-medium text-gray-1000">
+        <div className="rounded-lg border border bg-background p-5 space-y-4">
+          <h3 className="text-label-14 font-medium text-foreground">
             Golden Snapshot
           </h3>
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-copy-13 text-gray-700">GUI Snapshot ID</span>
-              <code className="text-copy-13 text-gray-1000 bg-gray-alpha-100 px-2 py-0.5 rounded font-mono">
+              <span className="text-copy-13 text-muted-foreground">GUI Snapshot ID</span>
+              <code className="text-copy-13 text-foreground bg-muted px-2 py-0.5 rounded font-mono">
                 {data.goldenSnapshot.guiSnapshotId
                   ? `${data.goldenSnapshot.guiSnapshotId.slice(0, 20)}...`
                   : "None"}
               </code>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-copy-13 text-gray-700">GUI Last Updated</span>
-              <span className="text-copy-13 text-gray-1000">
+              <span className="text-copy-13 text-muted-foreground">GUI Last Updated</span>
+              <span className="text-copy-13 text-foreground">
                 {data.goldenSnapshot.guiUpdatedAt
                   ? new Date(data.goldenSnapshot.guiUpdatedAt).toLocaleString()
                   : "Never"}
               </span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-copy-13 text-gray-700">CLI Snapshot ID</span>
-              <code className="text-copy-13 text-gray-1000 bg-gray-alpha-100 px-2 py-0.5 rounded font-mono">
+              <span className="text-copy-13 text-muted-foreground">CLI Snapshot ID</span>
+              <code className="text-copy-13 text-foreground bg-muted px-2 py-0.5 rounded font-mono">
                 {data.goldenSnapshot.cliSnapshotId
                   ? `${data.goldenSnapshot.cliSnapshotId.slice(0, 20)}...`
                   : "None"}
               </code>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-copy-13 text-gray-700">CLI Last Updated</span>
-              <span className="text-copy-13 text-gray-1000">
+              <span className="text-copy-13 text-muted-foreground">CLI Last Updated</span>
+              <span className="text-copy-13 text-foreground">
                 {data.goldenSnapshot.cliUpdatedAt
                   ? new Date(data.goldenSnapshot.cliUpdatedAt).toLocaleString()
                   : "Never"}
               </span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-copy-13 text-gray-700">
+              <span className="text-copy-13 text-muted-foreground">
                 Pool VMs on GUI snapshot
               </span>
-              <span className="text-copy-13 text-gray-1000 tabular-nums">
+              <span className="text-copy-13 text-foreground tabular-nums">
                 {data.pool.matchingSnapshot}
               </span>
             </div>
@@ -948,16 +948,16 @@ function SnapshotsTab() {
             </p>
           )}
           {data.rebuildJob ? (
-            <div className="space-y-2 rounded-md border border-gray-alpha-300 p-3">
+            <div className="space-y-2 rounded-md border border p-3">
               <div className="flex items-center justify-between text-copy-13">
-                <span className="text-gray-700">
+                <span className="text-muted-foreground">
                   {rebuildLastLine}
                 </span>
-                <span className="tabular-nums text-gray-900">
+                <span className="tabular-nums text-foreground">
                   {Math.max(0, Math.min(100, data.rebuildJob.progress))}%
                 </span>
               </div>
-              <div className="h-2 w-full overflow-hidden rounded bg-gray-alpha-200">
+              <div className="h-2 w-full overflow-hidden rounded bg-muted">
                 <div
                   className={cn(
                     "h-full transition-all",
@@ -972,15 +972,15 @@ function SnapshotsTab() {
                   }}
                 />
               </div>
-              <div className="text-copy-12 text-gray-700">
+              <div className="text-copy-12 text-muted-foreground">
                 Status: {data.rebuildJob.status} · Updated:{" "}
                 {new Date(data.rebuildJob.updatedAt).toLocaleString()}
               </div>
-              <div className="rounded-md border border-gray-alpha-300 bg-background-200">
-                <div className="px-2 py-1 border-b border-gray-alpha-300 text-copy-12 text-gray-700">
+              <div className="rounded-md border border bg-background">
+                <div className="px-2 py-1 border-b border text-copy-12 text-muted-foreground">
                   Rebuild Logs
                 </div>
-                <pre className="max-h-56 overflow-auto p-2 text-[11px] leading-5 text-gray-900 font-mono whitespace-pre-wrap break-words">
+                <pre className="max-h-56 overflow-auto p-2 text-[11px] leading-5 text-foreground font-mono whitespace-pre-wrap break-words">
                   {rebuildLog || "[job] Waiting for logs..."}
                 </pre>
               </div>
@@ -991,51 +991,51 @@ function SnapshotsTab() {
           ) : null}
         </div>
 
-        <div className="rounded-lg border border-gray-alpha-400 bg-background-100 p-5 space-y-4">
-          <h3 className="text-label-14 font-medium text-gray-1000">
+        <div className="rounded-lg border border bg-background p-5 space-y-4">
+          <h3 className="text-label-14 font-medium text-foreground">
             Warm Pool
           </h3>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <p className="text-copy-13 text-gray-700">Available</p>
+              <p className="text-copy-13 text-muted-foreground">Available</p>
               <p className="text-[24px] font-semibold tracking-tight text-green-700 tabular-nums">
                 {data.pool.available}
               </p>
             </div>
             <div>
-              <p className="text-copy-13 text-gray-700">Target</p>
-              <p className="text-[24px] font-semibold tracking-tight text-gray-1000 tabular-nums">
+              <p className="text-copy-13 text-muted-foreground">Target</p>
+              <p className="text-[24px] font-semibold tracking-tight text-foreground tabular-nums">
                 {data.pool.target}
               </p>
             </div>
             <div>
-              <p className="text-copy-13 text-gray-700">Claimed</p>
+              <p className="text-copy-13 text-muted-foreground">Claimed</p>
               <p className="text-[24px] font-semibold tracking-tight text-blue-700 tabular-nums">
                 {data.pool.claimed}
               </p>
             </div>
             <div>
-              <p className="text-copy-13 text-gray-700">Expired</p>
-              <p className="text-[24px] font-semibold tracking-tight text-gray-700 tabular-nums">
+              <p className="text-copy-13 text-muted-foreground">Expired</p>
+              <p className="text-[24px] font-semibold tracking-tight text-muted-foreground tabular-nums">
                 {data.pool.expired}
               </p>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <p className="text-copy-13 text-gray-700">Hit</p>
+              <p className="text-copy-13 text-muted-foreground">Hit</p>
               <p className="text-copy-14 text-green-800 tabular-nums">{data.claimStats.hits}</p>
             </div>
             <div>
-              <p className="text-copy-13 text-gray-700">Miss</p>
-              <p className="text-copy-14 text-gray-900 tabular-nums">{data.claimStats.misses}</p>
+              <p className="text-copy-13 text-muted-foreground">Miss</p>
+              <p className="text-copy-14 text-foreground tabular-nums">{data.claimStats.misses}</p>
             </div>
             <div>
-              <p className="text-copy-13 text-gray-700">Stale</p>
+              <p className="text-copy-13 text-muted-foreground">Stale</p>
               <p className="text-copy-14 text-amber-800 tabular-nums">{data.claimStats.stale}</p>
             </div>
             <div>
-              <p className="text-copy-13 text-gray-700">Fallback</p>
+              <p className="text-copy-13 text-muted-foreground">Fallback</p>
               <p className="text-copy-14 text-blue-800 tabular-nums">{data.claimStats.fallback}</p>
             </div>
           </div>
@@ -1043,41 +1043,41 @@ function SnapshotsTab() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div className="rounded-lg border border-gray-alpha-400 bg-background-100 p-5 space-y-3">
-          <h3 className="text-label-14 font-medium text-gray-1000">Policy Caps</h3>
-          <div className="text-copy-13 text-gray-800 space-y-1">
+        <div className="rounded-lg border border bg-background p-5 space-y-3">
+          <h3 className="text-label-14 font-medium text-foreground">Policy Caps</h3>
+          <div className="text-copy-13 text-muted-foreground space-y-1">
             <p>Max snapshots/user: {data.poolLimits.maxSnapshotsPerUser}</p>
             <p>Max pool buckets/user: {data.poolLimits.maxPoolBucketsPerUser}</p>
             <p>Max warm entries/user: {data.poolLimits.maxWarmEntriesPerUserTotal}</p>
             <p>Max target per bucket: {data.poolLimits.maxTargetPerBucket}</p>
             <p>Default max age (minutes): {data.poolLimits.defaultMaxAgeMinutes}</p>
           </div>
-          <div className="text-copy-13 text-gray-700">
+          <div className="text-copy-13 text-muted-foreground">
             Policies: {data.poolPolicies.enabledPolicies}/{data.poolPolicies.totalPolicies} enabled · total target {data.poolPolicies.totalTarget}
           </div>
         </div>
 
-        <div className="rounded-lg border border-gray-alpha-400 bg-background-100 p-5 space-y-3">
-          <h3 className="text-label-14 font-medium text-gray-1000">Top Pool Users</h3>
+        <div className="rounded-lg border border bg-background p-5 space-y-3">
+          <h3 className="text-label-14 font-medium text-foreground">Top Pool Users</h3>
           <div className="space-y-2">
             {data.topPoolUsers.map((u) => (
               <div key={u.userId} className="flex items-center justify-between text-copy-13">
-                <span className="truncate text-gray-900">
+                <span className="truncate text-foreground">
                   {u.userEmail ?? u.userName ?? u.userId}
                 </span>
-                <span className="tabular-nums text-gray-700">{u.claims}</span>
+                <span className="tabular-nums text-muted-foreground">{u.claims}</span>
               </div>
             ))}
             {data.topPoolUsers.length === 0 ? (
-              <p className="text-copy-13 text-gray-700">No claim data yet.</p>
+              <p className="text-copy-13 text-muted-foreground">No claim data yet.</p>
             ) : null}
           </div>
         </div>
       </div>
 
-      <div className="rounded-lg border border-gray-alpha-400 bg-background-100 overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-alpha-400 bg-background-200">
-          <h3 className="text-label-14 font-medium text-gray-1000">
+      <div className="rounded-lg border border bg-background overflow-hidden">
+        <div className="px-4 py-3 border-b border bg-background">
+          <h3 className="text-label-14 font-medium text-foreground">
             Recent Pool Entries
           </h3>
         </div>
