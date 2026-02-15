@@ -4,6 +4,7 @@ import { db } from "@/lib/db/client";
 import { users, workspaces, warmPool, poolClaimEvents, userPoolPolicies } from "@/lib/db/schema";
 import { eq, sql, count } from "drizzle-orm";
 import { POOL_LIMITS } from "@/lib/pools/constants";
+import { getOverviewMetrics } from "@/lib/admin/ops";
 
 export async function GET() {
   const session = await getSession();
@@ -26,6 +27,7 @@ export async function GET() {
     workspacesByStatus,
     topPoolConsumers,
     policyStats,
+    overview,
   ] = await Promise.all([
     db
       .select({
@@ -152,18 +154,23 @@ export async function GET() {
         totalTarget: sql<number>`COALESCE(SUM(${userPoolPolicies.target}), 0)`,
       })
       .from(userPoolPolicies),
+
+    getOverviewMetrics(),
   ]);
 
   return NextResponse.json({
+    overview,
     users: userStats[0],
     workspaces: workspaceStats[0],
     warmPool: warmPoolStats[0],
     poolClaims: poolClaimStats[0],
+    claimStats: poolClaimStats[0],
     userList,
     recentWorkspaces,
     usersByDay,
     workspacesByStatus,
     topPoolConsumers,
+    topPoolUsers: topPoolConsumers,
     poolPolicies: policyStats[0],
     poolLimits: POOL_LIMITS,
   });

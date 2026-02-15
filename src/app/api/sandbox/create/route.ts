@@ -1,14 +1,11 @@
+import crypto from "node:crypto";
 import { NextResponse } from "next/server";
-import { headers } from "next/headers";
 import { getSession } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
 import { workspaces } from "@/lib/db/schema";
 import { eq, count, inArray, and } from "drizzle-orm";
 import { getGoldenSnapshotId } from "@/lib/sandbox/golden-snapshot";
-import {
-  claimWarmVM,
-  triggerBackgroundReplenish,
-} from "@/lib/sandbox/warm-pool";
+import { claimWarmVM } from "@/lib/sandbox/warm-pool";
 import { WORKSPACE_ICON_NAMES, generateWorkspaceName } from "@/types/workspace";
 import { getProviderDriver } from "@/lib/runtime/providers";
 import { ProviderRuntimeError } from "@/lib/runtime/providers/types";
@@ -24,6 +21,8 @@ import { enforceRateLimit, RATE_LIMIT_IDS } from "@/lib/rate-limit";
 import { resolveSnapshotSource } from "@/lib/sandbox/snapshot-sources";
 import type { SnapshotSource } from "@/lib/pools/constants";
 import { logPoolClaimEvent } from "@/lib/pools/claim-events";
+import { captureServerEvent, captureServerException } from "@/lib/observability/server";
+import { logApiFailure, logWorkspaceLaunchEvent, upsertIncident } from "@/lib/admin/ops";
 
 type CreateWorkspaceBody = {
   name?: string;
@@ -75,6 +74,9 @@ export async function POST(req: Request) {
     session.role,
   );
   if (ipRateLimited) return ipRateLimited;
+
+  const requestStartedAt = Date.now();
+  const requestId = crypto.randomUUID();
 
   try {
     const body = (await req.json()) as CreateWorkspaceBody;
@@ -139,6 +141,17 @@ export async function POST(req: Request) {
         );
       }
 
+      await logWorkspaceLaunchEvent({
+        workspaceId: existingWorkspace.id,
+        userId: session.id,
+        provider: resolvedProvider.value,
+        experience: resolvedExperience.value,
+        displayClient: resolvedDisplayClient.value,
+        sizeProfile: resolvedSize.value.id,
+        status: "requested",
+        requestId,
+      }).catch(() => undefined);
+
       const resolvedSnapshot = await resolveSnapshotSource({
         userId: session.id,
         provider: resolvedProvider.value,
@@ -176,6 +189,7 @@ export async function POST(req: Request) {
             ? await claimWarmVM()
             : null;
       }
+      const poolHit = Boolean(sandbox);
 
       if (resolvedProvider.value === "vercel") {
         await logPoolClaimEvent({
@@ -210,19 +224,14 @@ export async function POST(req: Request) {
           throw err;
         }
       }
-
-      if (resolvedProvider.value === "vercel") {
-        const h = await headers();
-        const host = h.get("host");
-        const proto = h.get("x-forwarded-proto") || "https";
-        if (host) triggerBackgroundReplenish(`${proto}://${host}`);
-      }
-
       const [updated] = await db
         .update(workspaces)
         .set({
           sandboxId: sandbox.sandboxId,
-          snapshotId: snapshotId || existingWorkspace.snapshotId,
+          snapshotId:
+            ("fallback" in sandbox && sandbox.fallback)
+              ? null
+              : (snapshotId || existingWorkspace.snapshotId),
           displayClient: resolvedDisplayClient.value,
           status: "active",
           updatedAt: new Date(),
@@ -245,6 +254,28 @@ export async function POST(req: Request) {
           reason: "snapshot fallback to fresh runtime",
         });
       }
+
+      await logWorkspaceLaunchEvent({
+        workspaceId: existingWorkspace.id,
+        userId: session.id,
+        provider: resolvedProvider.value,
+        experience: resolvedExperience.value,
+        displayClient: resolvedDisplayClient.value,
+        sizeProfile: resolvedSize.value.id,
+        source: fallback ? "fallback" : poolHit ? "warm_pool_hit" : "fresh",
+        status: "ready",
+        latencyMs: Date.now() - requestStartedAt,
+        requestId,
+      }).catch(() => undefined);
+      await captureServerEvent("workspace_launch_ready", {
+        userId: session.id,
+        workspaceId: existingWorkspace.id,
+        provider: resolvedProvider.value,
+        experience: resolvedExperience.value,
+        displayClient: resolvedDisplayClient.value,
+        sizeProfile: resolvedSize.value.id,
+        latencyMs: Date.now() - requestStartedAt,
+      });
       return NextResponse.json({ workspace: updated, sandbox, fallback });
     }
 
@@ -351,6 +382,17 @@ export async function POST(req: Request) {
     ]);
 
     const [workspace] = insertResult;
+    await logWorkspaceLaunchEvent({
+      workspaceId: workspace.id,
+      userId: session.id,
+      provider: resolvedProvider.value,
+      experience: resolvedExperience.value,
+      displayClient: resolvedDisplayClient.value,
+      sizeProfile: resolvedSize.value.id,
+      status: "requested",
+      requestId,
+    }).catch(() => undefined);
+
     const resolvedSnapshot = await resolveSnapshotSource({
       userId: session.id,
       provider: resolvedProvider.value,
@@ -364,6 +406,7 @@ export async function POST(req: Request) {
     const snapshotId = resolvedSnapshot.snapshotId;
 
     let sandbox;
+    let poolHit = false;
     try {
       // Try to claim a pre-warmed VM from the pool (only for default vercel profile)
       sandbox =
@@ -389,6 +432,7 @@ export async function POST(req: Request) {
             ? await claimWarmVM()
             : null;
       }
+      poolHit = Boolean(sandbox);
 
       if (resolvedProvider.value === "vercel") {
         await logPoolClaimEvent({
@@ -424,28 +468,67 @@ export async function POST(req: Request) {
       const providerError = toProviderErrorResponse(provisionErr);
       if (providerError) return providerError;
 
+      const message =
+        provisionErr instanceof Error ? provisionErr.message : "Failed to provision runtime";
+      await logWorkspaceLaunchEvent({
+        workspaceId: workspace.id,
+        userId: session.id,
+        provider: resolvedProvider.value,
+        experience: resolvedExperience.value,
+        displayClient: resolvedDisplayClient.value,
+        sizeProfile: resolvedSize.value.id,
+        source: "warm_pool_miss",
+        status: "failed",
+        errorCode: "provision_failed",
+        errorMessage: message,
+        latencyMs: Date.now() - requestStartedAt,
+        requestId,
+      }).catch(() => undefined);
+      await upsertIncident({
+        kind: "workspace_error",
+        severity: "sev2",
+        title: "Workspace provisioning failed",
+        fingerprintSeed: `${resolvedProvider.value}:${resolvedExperience.value}:${message}`,
+        affectedUsers: 1,
+        affectedWorkspaces: 1,
+        latestContext: {
+          requestId,
+          workspaceId: workspace.id,
+          provider: resolvedProvider.value,
+          experience: resolvedExperience.value,
+          displayClient: resolvedDisplayClient.value,
+          sizeProfile: resolvedSize.value.id,
+          message,
+        },
+      }).catch(() => undefined);
+      await logApiFailure({
+        route: "/api/sandbox/create",
+        method: "POST",
+        statusCode: 500,
+        errorCode: "provision_failed",
+        requestId,
+        userId: session.id,
+        workspaceId: workspace.id,
+      }).catch(() => undefined);
+      await captureServerException(provisionErr, {
+        route: "/api/sandbox/create",
+        requestId,
+        userId: session.id,
+        workspaceId: workspace.id,
+      });
+
       console.error("Sandbox provisioning failed, cleaned up workspace row:", provisionErr);
       return NextResponse.json(
         { error: "Failed to create sandbox" },
         { status: 500 },
       );
     }
-
-    // Trigger background replenish (ISR-style: don't block the response)
-    if (resolvedProvider.value === "vercel") {
-      const h = await headers();
-      const host = h.get("host");
-      const proto = h.get("x-forwarded-proto") || "https";
-      if (host) {
-        triggerBackgroundReplenish(`${proto}://${host}`);
-      }
-    }
-
     const [updated] = await db
       .update(workspaces)
       .set({
         sandboxId: sandbox.sandboxId,
-        snapshotId: snapshotId ?? null,
+        snapshotId:
+          ("fallback" in sandbox && sandbox.fallback) ? null : (snapshotId ?? null),
         status: "active",
         updatedAt: new Date(),
       })
@@ -468,12 +551,58 @@ export async function POST(req: Request) {
       });
     }
 
+    await logWorkspaceLaunchEvent({
+      workspaceId: workspace.id,
+      userId: session.id,
+      provider: resolvedProvider.value,
+      experience: resolvedExperience.value,
+      displayClient: resolvedDisplayClient.value,
+      sizeProfile: resolvedSize.value.id,
+      source: fallback ? "fallback" : poolHit ? "warm_pool_hit" : "fresh",
+      status: "ready",
+      latencyMs: Date.now() - requestStartedAt,
+      requestId,
+    }).catch(() => undefined);
+    await captureServerEvent("workspace_launch_ready", {
+      userId: session.id,
+      workspaceId: workspace.id,
+      provider: resolvedProvider.value,
+      experience: resolvedExperience.value,
+      displayClient: resolvedDisplayClient.value,
+      sizeProfile: resolvedSize.value.id,
+      latencyMs: Date.now() - requestStartedAt,
+    });
+
     return NextResponse.json({
       workspace: updated,
       sandbox,
       fallback,
     });
   } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to create sandbox";
+    await upsertIncident({
+      kind: "api_error",
+      severity: "sev2",
+      title: "Sandbox create API error",
+      fingerprintSeed: message,
+      affectedUsers: 1,
+      affectedWorkspaces: 0,
+      latestContext: { requestId, userId: session.id, message },
+    }).catch(() => undefined);
+    await logApiFailure({
+      route: "/api/sandbox/create",
+      method: "POST",
+      statusCode: 500,
+      errorCode: "unhandled_error",
+      requestId,
+      userId: session.id,
+      context: { message },
+    }).catch(() => undefined);
+    await captureServerException(err, {
+      route: "/api/sandbox/create",
+      requestId,
+      userId: session.id,
+    });
     console.error("Create sandbox error:", err);
     return NextResponse.json(
       { error: "Failed to create sandbox" },

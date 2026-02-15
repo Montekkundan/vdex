@@ -123,6 +123,48 @@ export const snapshotRebuildJobStatusEnum = pgEnum("snapshot_rebuild_job_status"
   "failed",
 ]);
 
+export const launchEventStatusEnum = pgEnum("launch_event_status", [
+  "requested",
+  "started",
+  "ready",
+  "failed",
+  "timeout",
+  "cancelled",
+]);
+
+export const launchEventSourceEnum = pgEnum("launch_event_source", [
+  "warm_pool_hit",
+  "warm_pool_miss",
+  "fallback",
+  "fresh",
+]);
+
+export const incidentKindEnum = pgEnum("incident_kind", [
+  "workspace_error",
+  "api_error",
+  "snapshot_rebuild_error",
+  "pool_degradation",
+  "client_exception",
+]);
+
+export const incidentSeverityEnum = pgEnum("incident_severity", [
+  "sev1",
+  "sev2",
+  "sev3",
+  "sev4",
+]);
+
+export const incidentStatusEnum = pgEnum("incident_status", [
+  "open",
+  "acknowledged",
+  "resolved",
+]);
+
+export const adminActionResultEnum = pgEnum("admin_action_result", [
+  "success",
+  "failed",
+]);
+
 export const warmPool = pgTable("warm_pool", {
   id: uuid("id").primaryKey().defaultRandom(),
   sandboxId: text("sandbox_id").notNull(),
@@ -285,6 +327,134 @@ export const snapshotRebuildJobs = pgTable(
   }),
 );
 
+export const workspaceLaunchEvents = pgTable(
+  "workspace_launch_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id").references(() => workspaces.id, {
+      onDelete: "set null",
+    }),
+    userId: uuid("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    provider: text("provider").notNull(),
+    experience: text("experience").notNull(),
+    displayClient: text("display_client").notNull(),
+    sizeProfile: text("size_profile").notNull(),
+    source: launchEventSourceEnum("source").default("fresh").notNull(),
+    status: launchEventStatusEnum("status").default("requested").notNull(),
+    errorCode: text("error_code"),
+    errorMessage: text("error_message"),
+    latencyMs: integer("latency_ms"),
+    requestId: text("request_id"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    launchEventsCreatedIdx: index("workspace_launch_events_created_idx").on(table.createdAt),
+    launchEventsStatusCreatedIdx: index("workspace_launch_events_status_created_idx").on(
+      table.status,
+      table.createdAt,
+    ),
+    launchEventsUserCreatedIdx: index("workspace_launch_events_user_created_idx").on(
+      table.userId,
+      table.createdAt,
+    ),
+    launchEventsWorkspaceCreatedIdx: index("workspace_launch_events_workspace_created_idx").on(
+      table.workspaceId,
+      table.createdAt,
+    ),
+  }),
+);
+
+export const adminIncidents = pgTable(
+  "admin_incidents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    kind: incidentKindEnum("kind").notNull(),
+    severity: incidentSeverityEnum("severity").default("sev3").notNull(),
+    title: text("title").notNull(),
+    fingerprint: text("fingerprint").notNull(),
+    status: incidentStatusEnum("status").default("open").notNull(),
+    firstSeenAt: timestamp("first_seen_at").defaultNow().notNull(),
+    lastSeenAt: timestamp("last_seen_at").defaultNow().notNull(),
+    occurrences: integer("occurrences").default(1).notNull(),
+    affectedUsers: integer("affected_users").default(0).notNull(),
+    affectedWorkspaces: integer("affected_workspaces").default(0).notNull(),
+    latestContext: jsonb("latest_context"),
+    source: text("source").default("internal").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    incidentsFingerprintUnique: uniqueIndex("admin_incidents_fingerprint_unique").on(
+      table.fingerprint,
+    ),
+    incidentsStatusSeenIdx: index("admin_incidents_status_seen_idx").on(table.status, table.lastSeenAt),
+    incidentsSeveritySeenIdx: index("admin_incidents_severity_seen_idx").on(
+      table.severity,
+      table.lastSeenAt,
+    ),
+  }),
+);
+
+export const adminActionAudit = pgTable(
+  "admin_action_audit",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    adminUserId: uuid("admin_user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    incidentId: uuid("incident_id").references(() => adminIncidents.id, {
+      onDelete: "set null",
+    }),
+    actionType: text("action_type").notNull(),
+    targetType: text("target_type").notNull(),
+    targetId: text("target_id").notNull(),
+    input: jsonb("input"),
+    result: adminActionResultEnum("result").default("success").notNull(),
+    error: text("error"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    actionAuditAdminCreatedIdx: index("admin_action_audit_admin_created_idx").on(
+      table.adminUserId,
+      table.createdAt,
+    ),
+    actionAuditIncidentCreatedIdx: index("admin_action_audit_incident_created_idx").on(
+      table.incidentId,
+      table.createdAt,
+    ),
+  }),
+);
+
+export const apiRequestFailures = pgTable(
+  "api_request_failures",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    route: text("route").notNull(),
+    method: text("method").notNull(),
+    statusCode: integer("status_code").notNull(),
+    errorCode: text("error_code"),
+    requestId: text("request_id"),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+    workspaceId: uuid("workspace_id").references(() => workspaces.id, {
+      onDelete: "set null",
+    }),
+    context: jsonb("context"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    apiFailuresRouteCreatedIdx: index("api_request_failures_route_created_idx").on(
+      table.route,
+      table.createdAt,
+    ),
+    apiFailuresStatusCreatedIdx: index("api_request_failures_status_created_idx").on(
+      table.statusCode,
+      table.createdAt,
+    ),
+  }),
+);
+
 // Global config table for things like the golden snapshot ID
 export const config = pgTable("config", {
   key: text("key").primaryKey(),
@@ -309,3 +479,11 @@ export type PoolClaimEventRow = typeof poolClaimEvents.$inferSelect;
 export type NewPoolClaimEvent = typeof poolClaimEvents.$inferInsert;
 export type PlatformDefaultRow = typeof platformDefaults.$inferSelect;
 export type SnapshotRebuildJobRow = typeof snapshotRebuildJobs.$inferSelect;
+export type WorkspaceLaunchEventRow = typeof workspaceLaunchEvents.$inferSelect;
+export type NewWorkspaceLaunchEvent = typeof workspaceLaunchEvents.$inferInsert;
+export type AdminIncidentRow = typeof adminIncidents.$inferSelect;
+export type NewAdminIncident = typeof adminIncidents.$inferInsert;
+export type AdminActionAuditRow = typeof adminActionAudit.$inferSelect;
+export type NewAdminActionAudit = typeof adminActionAudit.$inferInsert;
+export type ApiRequestFailureRow = typeof apiRequestFailures.$inferSelect;
+export type NewApiRequestFailure = typeof apiRequestFailures.$inferInsert;
