@@ -65,7 +65,7 @@ export function UserProfile() {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon" className="rounded-full">
-          <Avatar>
+          <Avatar className="size-7">
             {avatarUrl ? <AvatarImage src={avatarUrl} alt={user?.name ?? "User"} /> : null}
             <AvatarFallback>{initials}</AvatarFallback>
           </Avatar>

@@ -11,10 +11,12 @@ interface PageHeaderProps {
 
 export function PageHeader({ title, description, actions }: PageHeaderProps) {
   return (
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <div className="flex flex-col gap-3 border-b border-dashed border-gray-alpha-300 pb-4 sm:flex-row sm:items-start sm:justify-between px-4">
       <div>
         <h1 className="text-heading-24 text-gray-1000">{title}</h1>
-        {description ? <p className="text-copy-13 text-gray-700">{description}</p> : null}
+        {description ? (
+          <p className="text-copy-13 text-gray-700">{description}</p>
+        ) : null}
       </div>
       <div className="flex items-center gap-2 sm:justify-end">
         <UserProfile />

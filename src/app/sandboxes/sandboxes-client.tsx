@@ -6,6 +6,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 import Link from "next/link";
 import { MainDataTable } from "@/components/ui/main-data-table";
 import { PageHeader } from "@/components/layout/page-header";
+import { AppPageFooter } from "@/components/layout/app-page-footer";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -456,144 +457,149 @@ export function SandboxesClient() {
   ];
 
   return (
-    <main className="min-h-screen bg-background-100 p-6 sm:p-8">
-      <div className="mx-auto w-full max-w-6xl space-y-6">
-        <PageHeader
-          title="Sandboxes"
-          description="Directly manage Vercel sandboxes and snapshots."
-          actions={
-            <div className="flex items-center gap-2">
-              <Button asChild variant="secondary">
-                <Link href="/desktop">Go to Desktop</Link>
-              </Button>
-              <Button asChild variant="secondary">
-                <Link href="/profiles">Go to Profiles</Link>
-              </Button>
-            </div>
-          }
-        />
+    <main className="min-h-screen bg-background-100">
+      <div className="mx-auto flex min-h-screen w-full max-w-[var(--container-max-width)] flex-col border-x border-dashed border-gray-alpha-300">
+        <div className="flex-1 py-6 sm:py-8">
+          <div className="space-y-6">
+            <PageHeader
+              title="Sandboxes"
+              description="Directly manage Vercel sandboxes and snapshots."
+              actions={
+                <div className="flex items-center gap-2">
+                  <Button asChild variant="secondary">
+                    <Link href="/desktop">Go to Desktop</Link>
+                  </Button>
+                  <Button asChild variant="secondary">
+                    <Link href="/profiles">Go to Profiles</Link>
+                  </Button>
+                </div>
+              }
+            />
 
-        {error ? <p className="text-copy-13 text-red-900">{error}</p> : null}
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Card className="bg-background-200">
-            <CardHeader className="pb-2">
-              <CardDescription>Total Snapshot Storage</CardDescription>
-              <CardTitle>{formatBytes(totalSnapshotBytes)}</CardTitle>
-            </CardHeader>
-          </Card>
-          <Card className="bg-background-200">
-            <CardHeader className="pb-2">
-              <CardDescription>Snapshots (Created)</CardDescription>
-              <CardTitle>{activeSnapshotCount}</CardTitle>
-            </CardHeader>
-          </Card>
-          <Card className="bg-background-200">
-            <CardHeader className="pb-2">
-              <CardDescription>Sandboxes (Running)</CardDescription>
-              <CardTitle>{runningSandboxes}</CardTitle>
-            </CardHeader>
-          </Card>
-          <Card className="bg-background-200">
-            <CardHeader className="pb-2">
-              <CardDescription>Avg Snapshot Size</CardDescription>
-              <CardTitle>{formatBytes(avgSnapshotBytes)}</CardTitle>
-            </CardHeader>
-          </Card>
+            {error ? <p className="text-copy-13 text-red-900">{error}</p> : null}
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <Card className="bg-background-200">
+                <CardHeader className="pb-2">
+                  <CardDescription>Total Snapshot Storage</CardDescription>
+                  <CardTitle>{formatBytes(totalSnapshotBytes)}</CardTitle>
+                </CardHeader>
+              </Card>
+              <Card className="bg-background-200">
+                <CardHeader className="pb-2">
+                  <CardDescription>Snapshots (Created)</CardDescription>
+                  <CardTitle>{activeSnapshotCount}</CardTitle>
+                </CardHeader>
+              </Card>
+              <Card className="bg-background-200">
+                <CardHeader className="pb-2">
+                  <CardDescription>Sandboxes (Running)</CardDescription>
+                  <CardTitle>{runningSandboxes}</CardTitle>
+                </CardHeader>
+              </Card>
+              <Card className="bg-background-200">
+                <CardHeader className="pb-2">
+                  <CardDescription>Avg Snapshot Size</CardDescription>
+                  <CardTitle>{formatBytes(avgSnapshotBytes)}</CardTitle>
+                </CardHeader>
+              </Card>
+            </div>
+
+            <Card className="bg-background-200">
+              <CardHeader>
+                <CardTitle>Sandboxes</CardTitle>
+                <CardDescription>
+                  {sandboxesLoading
+                    ? "Loading..."
+                    : `${visibleSandboxes.length} shown / ${sandboxes.length} total`}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <label className="mr-2 flex items-center gap-2 text-copy-12 text-gray-800">
+                    <Switch
+                      checked={showStoppedSandboxes}
+                      onCheckedChange={setShowStoppedSandboxes}
+                    />
+                    Show stopped
+                  </label>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    disabled={!!busy || stoppableSelectedCount === 0}
+                    onClick={() => void stopSelectedSandboxes()}
+                  >
+                    {busy === "bulk-stop" ? <Spinner className="size-3.5" /> : `Stop selected (${stoppableSelectedCount})`}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={!!busy}
+                    onClick={() => void mutateSandboxes()}
+                  >
+                    Refresh
+                  </Button>
+                </div>
+                <MainDataTable
+                  columns={sandboxColumns}
+                  data={visibleSandboxes}
+                  filterColumnId="id"
+                  filterPlaceholder="Filter by sandbox ID..."
+                  getRowId={(row) => row.id}
+                  enableRowSelection
+                  onSelectionChange={handleSandboxSelectionChange}
+                />
+              </CardContent>
+            </Card>
+
+            <Card className="bg-background-200">
+              <CardHeader>
+                <CardTitle>Snapshots</CardTitle>
+                <CardDescription>
+                  {snapshotsLoading
+                    ? "Loading..."
+                    : `${activeSnapshotCount} created / ${visibleSnapshots.length} shown / ${snapshots.length} listed · ${formatBytes(totalSnapshotBytes)} total`}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <label className="mr-2 flex items-center gap-2 text-copy-12 text-gray-800">
+                    <Switch
+                      checked={showDeletedSnapshots}
+                      onCheckedChange={setShowDeletedSnapshots}
+                    />
+                    Show deleted
+                  </label>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    disabled={!!busy || deletableSelectedCount === 0}
+                    onClick={() => void deleteSelectedSnapshots()}
+                  >
+                    {busy === "bulk-delete" ? <Spinner className="size-3.5" /> : `Delete selected (${deletableSelectedCount})`}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={!!busy}
+                    onClick={() => void mutateSnapshots()}
+                  >
+                    Refresh
+                  </Button>
+                </div>
+                <MainDataTable
+                  columns={snapshotColumns}
+                  data={visibleSnapshots}
+                  filterColumnId="id"
+                  filterPlaceholder="Filter by snapshot ID..."
+                  getRowId={(row) => row.id}
+                  enableRowSelection
+                  onSelectionChange={handleSnapshotSelectionChange}
+                />
+              </CardContent>
+            </Card>
+          </div>
         </div>
-
-        <Card className="bg-background-200">
-          <CardHeader>
-            <CardTitle>Sandboxes</CardTitle>
-            <CardDescription>
-              {sandboxesLoading
-                ? "Loading..."
-                : `${visibleSandboxes.length} shown / ${sandboxes.length} total`}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-              <label className="mr-2 flex items-center gap-2 text-copy-12 text-gray-800">
-                <Switch
-                  checked={showStoppedSandboxes}
-                  onCheckedChange={setShowStoppedSandboxes}
-                />
-                Show stopped
-              </label>
-              <Button
-                size="sm"
-                variant="destructive"
-                disabled={!!busy || stoppableSelectedCount === 0}
-                onClick={() => void stopSelectedSandboxes()}
-              >
-                {busy === "bulk-stop" ? <Spinner className="size-3.5" /> : `Stop selected (${stoppableSelectedCount})`}
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={!!busy}
-                onClick={() => void mutateSandboxes()}
-              >
-                Refresh
-              </Button>
-            </div>
-            <MainDataTable
-              columns={sandboxColumns}
-              data={visibleSandboxes}
-              filterColumnId="id"
-              filterPlaceholder="Filter by sandbox ID..."
-              getRowId={(row) => row.id}
-              enableRowSelection
-              onSelectionChange={handleSandboxSelectionChange}
-            />
-          </CardContent>
-        </Card>
-
-        <Card className="bg-background-200">
-          <CardHeader>
-            <CardTitle>Snapshots</CardTitle>
-            <CardDescription>
-              {snapshotsLoading
-                ? "Loading..."
-                : `${activeSnapshotCount} created / ${visibleSnapshots.length} shown / ${snapshots.length} listed · ${formatBytes(totalSnapshotBytes)} total`}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-              <label className="mr-2 flex items-center gap-2 text-copy-12 text-gray-800">
-                <Switch
-                  checked={showDeletedSnapshots}
-                  onCheckedChange={setShowDeletedSnapshots}
-                />
-                Show deleted
-              </label>
-              <Button
-                size="sm"
-                variant="destructive"
-                disabled={!!busy || deletableSelectedCount === 0}
-                onClick={() => void deleteSelectedSnapshots()}
-              >
-                {busy === "bulk-delete" ? <Spinner className="size-3.5" /> : `Delete selected (${deletableSelectedCount})`}
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={!!busy}
-                onClick={() => void mutateSnapshots()}
-              >
-                Refresh
-              </Button>
-            </div>
-            <MainDataTable
-              columns={snapshotColumns}
-              data={visibleSnapshots}
-              filterColumnId="id"
-              filterPlaceholder="Filter by snapshot ID..."
-              getRowId={(row) => row.id}
-              enableRowSelection
-              onSelectionChange={handleSnapshotSelectionChange}
-            />
-          </CardContent>
-        </Card>
+        <AppPageFooter />
       </div>
 
       <Dialog open={inspectOpen} onOpenChange={setInspectOpen}>

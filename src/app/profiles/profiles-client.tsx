@@ -23,6 +23,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { PageHeader } from "@/components/layout/page-header";
+import { AppPageFooter } from "@/components/layout/app-page-footer";
 import { SIZE_PROFILES, DISPLAY_CLIENTS, EXPERIENCES, PROVIDERS } from "@/lib/runtime/profiles";
 import { Info } from "lucide-react";
 import { captureEvent } from "@/lib/observability/client";
@@ -114,52 +115,61 @@ export function ProfilesClient() {
 
   if (snapshotsLoading || policiesLoading) {
     return (
-      <main className="flex min-h-screen items-center justify-center">
-        <Spinner size="lg" />
+      <main className="min-h-screen bg-background-100">
+        <div className="mx-auto flex min-h-screen w-full max-w-[var(--container-max-width)] items-center justify-center border-x border-dashed border-gray-alpha-300">
+          <Spinner size="lg" />
+        </div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-background-100 p-6 sm:p-8">
-      <div className="mx-auto w-full max-w-6xl space-y-6">
-        <PageHeader
-          title="Profiles"
-          description="Manage your snapshots and warm-pool policies."
-          actions={
-            <>
-              <div className="flex gap-4 text-copy-13 text-gray-700">
-                <span>Available: {stats.available}</span>
-                <span>Claimed: {stats.claimed}</span>
-                <span>Expired: {stats.expired}</span>
-              </div>
-              <Button asChild variant="secondary">
-                <Link href="/desktop">Desktop</Link>
-              </Button>
-            </>
-          }
-        />
+    <main className="min-h-screen bg-background-100">
+      <div className="mx-auto flex min-h-screen w-full max-w-[var(--container-max-width)] flex-col border-x border-dashed border-gray-alpha-300">
+        <div className="flex-1 py-6 sm:py-8">
+          <div className="space-y-6">
+            <PageHeader
+              title="Profiles"
+              description="Manage your snapshots and warm-pool policies."
+              actions={
+                <>
+                  <div className="flex gap-4 text-copy-13 text-gray-700">
+                    <span>Available: {stats.available}</span>
+                    <span>Claimed: {stats.claimed}</span>
+                    <span>Expired: {stats.expired}</span>
+                  </div>
+                  <Button asChild variant="secondary">
+                    <Link href="/desktop">Desktop</Link>
+                  </Button>
+                </>
+              }
+            />
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Base Images</CardTitle>
-            <CardDescription>
-              User snapshots are built on top of these minimal defaults.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-4 md:grid-cols-2 text-copy-13 text-gray-800">
-            <div className="rounded-md border border-gray-alpha-300 p-3">
-              <p className="font-medium text-gray-1000">Golden GUI (minimal)</p>
-              <p>Browser + file manager + terminal stack + runtime essentials.</p>
-              <p className="mt-1 text-gray-700">Includes: Firefox, Nautilus, Text Editor, Calculator, Node/npm/pnpm/Bun, Python/pip, Git, tmux, jq.</p>
+            <div className="rounded-md border border-dashed border-amber-300 bg-amber-50 px-4 py-3 text-copy-13 text-amber-900">
+              Golden snapshot toolchain update: CLI and GUI images now include Rust/Cargo and C build
+              tools (`gcc`, `g++`, `make`) by default.
             </div>
-            <div className="rounded-md border border-gray-alpha-300 p-3">
-              <p className="font-medium text-gray-1000">Golden CLI (minimal)</p>
-              <p>CLI-only runtime with bridge and terminal essentials.</p>
-              <p className="mt-1 text-gray-700">Includes: Node/npm/pnpm/Bun, Python/pip, Git, tmux, jq, vim.</p>
-            </div>
-          </CardContent>
-        </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Base Images</CardTitle>
+                <CardDescription>
+                  User snapshots are built on top of these minimal defaults.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-4 text-copy-13 text-gray-800 md:grid-cols-2">
+                <div className="rounded-md border border-gray-alpha-300 p-3">
+                  <p className="font-medium text-gray-1000">Golden GUI (minimal)</p>
+                  <p>Browser + file manager + terminal stack + runtime essentials.</p>
+                  <p className="mt-1 text-gray-700">Includes: Firefox, Nautilus, Text Editor, Calculator, Node/npm/pnpm/Bun, Python/pip, Git, tmux, jq.</p>
+                </div>
+                <div className="rounded-md border border-gray-alpha-300 p-3">
+                  <p className="font-medium text-gray-1000">Golden CLI (minimal)</p>
+                  <p>CLI-only runtime with bridge and terminal essentials.</p>
+                  <p className="mt-1 text-gray-700">Includes: Node/npm/pnpm/Bun, Python/pip, Git, tmux, jq, vim.</p>
+                </div>
+              </CardContent>
+            </Card>
 
         {error ? (
           <div className="rounded-md border border-red-300 bg-red-100 px-4 py-3 text-copy-13 text-red-900">
@@ -604,6 +614,9 @@ export function ProfilesClient() {
             </div>
           </CardContent>
         </Card>
+          </div>
+        </div>
+        <AppPageFooter />
       </div>
     </main>
   );

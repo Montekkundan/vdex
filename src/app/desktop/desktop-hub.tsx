@@ -14,6 +14,7 @@ import { WorkspaceIcon } from "@/components/workspace-icon";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/layout/page-header";
+import { AppPageFooter } from "@/components/layout/app-page-footer";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
@@ -247,7 +248,7 @@ export function DesktopHub() {
           const ws = row.original;
           const busy = actionId === ws.id;
           return (
-            <div className="flex justify-end gap-2">
+            <div className="flex items-center justify-end gap-2">
               {ws.status === "active" ? (
                 <Button
                   size="sm"
@@ -265,7 +266,9 @@ export function DesktopHub() {
                   {busy ? <Spinner className="size-3.5" /> : "Start"}
                 </Button>
               ) : (
-                <Badge variant="outline">No snapshot</Badge>
+                <Badge variant="outline" className="h-6">
+                  No snapshot
+                </Badge>
               )}
               {ws.status === "active" && (
                 <Button
@@ -575,68 +578,73 @@ export function DesktopHub() {
 
   if (isLoading) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-background-100">
-        <Spinner size="lg" />
+      <main className="min-h-screen bg-background-100">
+        <div className="mx-auto flex min-h-screen w-full max-w-[var(--container-max-width)] items-center justify-center border-x border-dashed border-gray-alpha-300">
+          <Spinner size="lg" />
+        </div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-background-100 p-6 sm:p-8">
-      <div className="mx-auto w-full max-w-5xl space-y-6">
-        <PageHeader
-          title="Workspaces"
-          description="Create, switch, and manage your VMs."
-          actions={
-            <>
-            <Button asChild variant="secondary">
-              <Link href="/profiles">Profiles</Link>
-            </Button>
-            <Button asChild variant="secondary">
-              <Link href="/sandboxes">Sandboxes</Link>
-            </Button>
-            <Button
-              onClick={() => setCreateDialogOpen(true)}
-            >
-              New VM
-            </Button>
-            </>
-          }
-        />
+    <main className="min-h-screen bg-background-100">
+      <div className="mx-auto flex min-h-screen w-full max-w-[var(--container-max-width)] flex-col border-x border-dashed border-gray-alpha-300">
+        <div className="flex-1 py-6 sm:py-8">
+          <div className="space-y-6">
+            <PageHeader
+              title="Workspaces"
+              description="Create, switch, and manage your VMs."
+              actions={
+                <>
+                  <Button asChild variant="secondary">
+                    <Link href="/profiles">Profiles</Link>
+                  </Button>
+                  <Button asChild variant="secondary">
+                    <Link href="/sandboxes">Sandboxes</Link>
+                  </Button>
+                  <Button onClick={() => setCreateDialogOpen(true)}>
+                    New VM
+                  </Button>
+                </>
+              }
+            />
 
-        <Card className="bg-background-200">
-          <CardHeader>
-            <CardTitle>Instances</CardTitle>
-            <CardDescription>Launch and switch VMs instantly.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {actionError && (
-              <p className="mb-3 text-copy-13 text-red-900">{actionError}</p>
-            )}
-            {sorted.length === 0 ? (
-              <div className="p-8 text-center">
-                <p className="text-copy-14 text-gray-900">No workspaces yet.</p>
-                <Button className="mt-4" onClick={() => setCreateDialogOpen(true)}>
-                  Create first VM
-                </Button>
-              </div>
-            ) : (
-              <MainDataTable
-                columns={instanceColumns}
-                data={sorted}
-                initialColumnVisibility={{
-                  provider: false,
-                  experience: false,
-                  sizeProfile: false,
-                  snapshot: false,
-                }}
-                filterColumnId="name"
-                filterPlaceholder="Filter workspaces..."
-                getRowId={(row) => row.id}
-              />
-            )}
-          </CardContent>
-        </Card>
+            <Card className="bg-background-200">
+              <CardHeader>
+                <CardTitle>Instances</CardTitle>
+                <CardDescription>Launch and switch VMs instantly.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {actionError && (
+                  <p className="mb-3 text-copy-13 text-red-900">{actionError}</p>
+                )}
+                {sorted.length === 0 ? (
+                  <div className="p-8 text-center">
+                    <p className="text-copy-14 text-gray-900">No workspaces yet.</p>
+                    <Button className="mt-4" onClick={() => setCreateDialogOpen(true)}>
+                      Create first VM
+                    </Button>
+                  </div>
+                ) : (
+                  <MainDataTable
+                    columns={instanceColumns}
+                    data={sorted}
+                    initialColumnVisibility={{
+                      provider: false,
+                      experience: false,
+                      sizeProfile: false,
+                      snapshot: false,
+                    }}
+                    filterColumnId="name"
+                    filterPlaceholder="Filter workspaces..."
+                    getRowId={(row) => row.id}
+                  />
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+        <AppPageFooter />
       </div>
 
       <Dialog
