@@ -117,18 +117,18 @@ export function Card1() {
         whileHover="whileHover"
         className="flex flex-col gap-y-5 items-center justify-between h-full w-full cursor-pointer"
       >
-        <div className="flex h-full w-full items-center justify-center rounded-t-xl border-b border-dashed">
+        <div className="flex h-full w-full items-center justify-center rounded-none border-b border-dashed">
           <div className="relative flex flex-col items-center justify-center gap-y-2 p-10">
             <motion.div
               variants={variant1}
-              className="z-[1] flex h-full w-full items-center justify-between gap-x-2 rounded-md border bg-background p-5 px-2.5 "
+              className="z-[1] flex h-full w-full items-center justify-between gap-x-2 rounded-none border bg-background p-5 px-2.5 "
             >
-              <div className="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center">
+              <div className="h-8 w-8 rounded-none bg-blue-500 flex items-center justify-center">
                 <SearchIcon className="h-5 w-5 text-white" />
               </div>
               <div className="flex flex-col gap-y-2">
-                <div className="h-2 w-32 rounded-full bg-neutral-800/50 dark:bg-neutral-200/80"></div>
-                <div className="h-2 w-48 rounded-full bg-slate-400/50"></div>
+                <div className="h-2 w-32 rounded-none bg-neutral-800/50 dark:bg-neutral-200/80"></div>
+                <div className="h-2 w-48 rounded-none bg-slate-400/50"></div>
                 <div className="text-xs text-neutral-500">
                   Browse workspace files
                 </div>
@@ -136,15 +136,15 @@ export function Card1() {
             </motion.div>
             <motion.div
               variants={variant2}
-              className="z-[2] flex h-full w-full items-center justify-between gap-x-2 rounded-md border bg-background p-5 px-2.5 "
+              className="z-[2] flex h-full w-full items-center justify-between gap-x-2 rounded-none border bg-background p-5 px-2.5 "
             >
-              <div className="h-8 w-8 rounded-full bg-green-500 flex items-center justify-center">
+              <div className="h-8 w-8 rounded-none bg-green-500 flex items-center justify-center">
                 <DatabaseIcon className="h-5 w-5 text-white" />
               </div>
               <div className="flex flex-col gap-y-2">
-                <div className="h-2 w-32 rounded-full bg-neutral-800/50 dark:bg-neutral-200/80"></div>
-                <div className="h-2 w-48 rounded-full bg-slate-400/50"></div>
-                <div className="h-2 w-20 rounded-full bg-slate-400/50"></div>
+                <div className="h-2 w-32 rounded-none bg-neutral-800/50 dark:bg-neutral-200/80"></div>
+                <div className="h-2 w-48 rounded-none bg-slate-400/50"></div>
+                <div className="h-2 w-20 rounded-none bg-slate-400/50"></div>
                 <div className="text-xs text-neutral-500">
                   Open a terminal session
                 </div>
@@ -152,16 +152,16 @@ export function Card1() {
             </motion.div>
             <motion.div
               variants={variant3}
-              className="absolute bottom-0 z-[3] m-auto flex h-fit w-fit items-center justify-between gap-x-2 rounded-md border bg-background p-5 px-2.5 "
+              className="absolute bottom-0 z-[3] m-auto flex h-fit w-fit items-center justify-between gap-x-2 rounded-none border bg-background p-5 px-2.5 "
             >
-              <div className="h-8 w-8 rounded-full bg-purple-500 flex items-center justify-center">
+              <div className="h-8 w-8 rounded-none bg-purple-500 flex items-center justify-center">
                 <MessageSquareIcon className="h-5 w-5 text-white" />
               </div>
               <div className="flex flex-col gap-y-2">
-                <div className="h-2 w-32 rounded-full bg-neutral-800/50 dark:bg-neutral-200/80"></div>
-                <div className="h-2 w-48 rounded-full bg-slate-400/50"></div>
-                <div className="h-2 w-20 rounded-full bg-slate-400/50"></div>
-                <div className="h-2 w-48 rounded-full bg-slate-400/50"></div>
+                <div className="h-2 w-32 rounded-none bg-neutral-800/50 dark:bg-neutral-200/80"></div>
+                <div className="h-2 w-48 rounded-none bg-slate-400/50"></div>
+                <div className="h-2 w-20 rounded-none bg-slate-400/50"></div>
+                <div className="h-2 w-48 rounded-none bg-slate-400/50"></div>
                 <div className="text-xs text-neutral-500">
                   Edit code with code-server
                 </div>
@@ -190,7 +190,7 @@ const Card2 = () => {
       timestamp: "2023-12-15 14:23:45",
       message: "Agent initialized. Starting task execution.",
       icon: (
-        <div className="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center">
+        <div className="h-8 w-8 rounded-none bg-blue-500 flex items-center justify-center">
           <InfoIcon className="h-5 w-5 text-white" />
         </div>
       ),
@@ -201,7 +201,7 @@ const Card2 = () => {
       timestamp: "2023-12-15 14:23:47",
       message: "Sandbox services are starting...",
       icon: (
-        <div className="h-8 w-8 rounded-full bg-green-500 flex items-center justify-center">
+        <div className="h-8 w-8 rounded-none bg-green-500 flex items-center justify-center">
           <DatabaseIcon className="h-5 w-5 text-white" />
         </div>
       ),
@@ -212,7 +212,7 @@ const Card2 = () => {
       timestamp: "2023-12-15 14:23:50",
       message: "Display bridge connected.",
       icon: (
-        <div className="h-8 w-8 rounded-full bg-purple-500 flex items-center justify-center">
+        <div className="h-8 w-8 rounded-none bg-purple-500 flex items-center justify-center">
           <BrainCircuitIcon className="h-5 w-5 text-white" />
         </div>
       ),
@@ -223,7 +223,7 @@ const Card2 = () => {
       timestamp: "2023-12-15 14:23:52",
       message: "Workspace snapshot available.",
       icon: (
-        <div className="h-8 w-8 rounded-full bg-yellow-500 flex items-center justify-center">
+        <div className="h-8 w-8 rounded-none bg-yellow-500 flex items-center justify-center">
           <AlertTriangleIcon className="h-5 w-5 text-white" />
         </div>
       ),
@@ -234,7 +234,7 @@ const Card2 = () => {
       timestamp: "2023-12-15 14:23:55",
       message: "Reconnecting after sandbox restart.",
       icon: (
-        <div className="h-8 w-8 rounded-full bg-red-500 flex items-center justify-center">
+        <div className="h-8 w-8 rounded-none bg-red-500 flex items-center justify-center">
           <XCircleIcon className="h-5 w-5 text-white" />
         </div>
       ),
@@ -254,12 +254,12 @@ const Card2 = () => {
         whileHover="whileHover"
         className="flex flex-col gap-y-5 items-center justify-between h-full w-full cursor-pointer"
       >
-        <div className="border-b items-center justify-center overflow-hidden bg-transparent rounded-t-xl h-4/5 w-full flex border-dashed">
-          <motion.div className="p-5 rounded-t-md cursor-pointer overflow-hidden h-[270px] flex flex-col gap-y-3.5 w-full">
+        <div className="border-b items-center justify-center overflow-hidden bg-transparent rounded-none h-4/5 w-full flex border-dashed">
+          <motion.div className="p-5 rounded-none cursor-pointer overflow-hidden h-[270px] flex flex-col gap-y-3.5 w-full">
             {logs.map((log, index) => (
               <motion.div
                 key={log.id}
-                className="p-4 bg-transparent backdrop-blur-md shadow-[0px_0px_40px_-25px_rgba(0,0,0,0.25)] border border-border origin-right w-full rounded-md flex items-center"
+                className="p-4 bg-transparent backdrop-blur-md shadow-[0px_0px_40px_-25px_rgba(0,0,0,0.25)] border border-border origin-right w-full rounded-none flex items-center"
                 custom={index}
                 variants={{
                   initial: (index: number) => ({
@@ -323,31 +323,31 @@ const Card3 = () => {
       className="p-0 min-h-[500px] lg:min-h-fit overflow-hidden border-b lg:border-b-0 -z-0 border-dashed"
     >
       <div className="relative flex flex-col gap-y-5 items-center justify-between h-full w-full">
-        <div className="border-b items-center justify-center overflow-hidden rounded-t-xl h-4/5 w-full flex border-dashed">
+        <div className="border-b items-center justify-center overflow-hidden rounded-none h-4/5 w-full flex border-dashed">
           <div className="relative flex items-center justify-center h-full w-full">
             <div className="absolute top-0 right-0 bottom-0 left-0 bg-[radial-gradient(circle,hsl(var(--accent)/0.3)_0%,transparent_100%)]"></div>
             <OrbitingCircles duration={15} delay={0} radius={40} startAngle={32} reverse>
-              <div className="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center">
+              <div className="h-8 w-8 rounded-none bg-blue-500 flex items-center justify-center">
                 <Icons.streamHeadset className="h-5 w-5 text-white" />
               </div>
             </OrbitingCircles>
             <OrbitingCircles duration={15} delay={20} radius={80} startAngle={141}>
-              <div className="h-8 w-8 rounded-full bg-green-500 flex items-center justify-center">
+              <div className="h-8 w-8 rounded-none bg-green-500 flex items-center justify-center">
                 <Icons.streamTerminal className="h-5 w-5 text-white" />
               </div>
             </OrbitingCircles>
             <OrbitingCircles radius={120} duration={20} delay={20} startAngle={267}>
-              <div className="h-8 w-8 rounded-full bg-purple-500 flex items-center justify-center">
+              <div className="h-8 w-8 rounded-none bg-purple-500 flex items-center justify-center">
                 <Icons.streamSearch className="h-5 w-5 text-white" />
               </div>
             </OrbitingCircles>
             <OrbitingCircles radius={160} duration={40} delay={20} startAngle={78}>
-              <div className="h-8 w-8 rounded-full bg-yellow-500 flex items-center justify-center">
+              <div className="h-8 w-8 rounded-none bg-yellow-500 flex items-center justify-center">
                 <Icons.streamMessage className="h-5 w-5 text-white" />
               </div>
             </OrbitingCircles>
             <OrbitingCircles radius={200} duration={30} startAngle={219}>
-              <div className="h-8 w-8 rounded-full bg-red-500 flex items-center justify-center">
+              <div className="h-8 w-8 rounded-none bg-red-500 flex items-center justify-center">
                 <Icons.streamFork className="h-5 w-5 text-white" />
               </div>
             </OrbitingCircles>

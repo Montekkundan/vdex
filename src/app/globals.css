@@ -86,13 +86,13 @@
     --color-popover: var(--popover);
     --color-card-foreground: var(--card-foreground);
     --color-card: var(--card);
-    --radius-sm: calc(var(--radius) - 4px);
-    --radius-md: calc(var(--radius) - 2px);
-    --radius-lg: var(--radius);
-    --radius-xl: calc(var(--radius) + 4px);
-    --radius-2xl: calc(var(--radius) + 8px);
-    --radius-3xl: calc(var(--radius) + 12px);
-    --radius-4xl: calc(var(--radius) + 16px);
+    --radius-sm: 0px;
+    --radius-md: 0px;
+    --radius-lg: 0px;
+    --radius-xl: 0px;
+    --radius-2xl: 0px;
+    --radius-3xl: 0px;
+    --radius-4xl: 0px;
     --text-heading-24: 1.5rem;
     --text-heading-24--line-height: 2rem;
     --text-label-16: 1rem;
@@ -196,7 +196,7 @@
     --chart-3: oklch(0.546 0.245 262.881);
     --chart-4: oklch(0.488 0.243 264.376);
     --chart-5: oklch(0.424 0.199 265.638);
-    --radius: 0.625rem;
+    --radius: 0px;
     --sidebar: oklch(0.985 0 0);
     --sidebar-foreground: oklch(0.145 0 0);
     --sidebar-primary: oklch(0.205 0 0);
@@ -304,6 +304,7 @@
 @layer base {
     * {
         @apply border-border outline-ring/50;
+        border-radius: 0 !important;
     }
     body {
         @apply m-0 bg-background text-foreground;
@@ -341,6 +342,6 @@
     }
 
     .material-medium {
-        @apply rounded-xl border border-gray-alpha-200 bg-background-100/80 shadow-sm backdrop-blur-md;
+        @apply border border-gray-alpha-200 bg-background-100/80 shadow-sm backdrop-blur-md;
     }
 }
