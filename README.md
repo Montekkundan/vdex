@@ -46,7 +46,6 @@ Display abstraction:
 - "Start" is only available when a workspace has a snapshot ID.
 - Warm pool behavior is environment-configurable:
   - `WARM_POOL_TARGET`
-  - `WARM_POOL_AUTO_REPLENISH`
 - On local development (`localhost`), service calls are routed through same-origin API proxy paths to avoid CORS issues.
 
 ## Provisioning Logic
@@ -87,7 +86,7 @@ Copy `.env.example` to `.env` and set values:
 - `VERCEL_CLIENT_ID`
 - `VERCEL_CLIENT_SECRET`
 - optional: `BETTER_AUTH_URL`
-- optional warm pool values (`WARM_POOL_TARGET`, `WARM_POOL_AUTO_REPLENISH`)
+- optional warm pool value (`WARM_POOL_TARGET`)
 
 ## 3. Database
 
