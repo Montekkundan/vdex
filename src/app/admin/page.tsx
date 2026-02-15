@@ -6,15 +6,38 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MainDataTable } from "@/components/ui/main-data-table";
 import { Spinner } from "@/components/ui/spinner";
+import { captureEvent } from "@/lib/observability/client";
 import { cn } from "@/lib/utils";
 
 interface AdminStats {
+  overview?: {
+    errorFreeLaunchRate24h: number;
+    errorFreeLaunchRate7d: number;
+    launchP50Ms: number;
+    launchP95Ms: number;
+    poolHitRate24h: number;
+    activeIncidents: number;
+    apiErrorRate24h: number;
+  };
   users: {
     total: number;
     guests: number;
     admins: number;
     regular: number;
   };
+  claimStats?: {
+    total: number;
+    hits: number;
+    misses: number;
+    stale: number;
+    fallback: number;
+  };
+  topPoolUsers?: Array<{
+    userId: string;
+    userEmail: string | null;
+    userName: string | null;
+    claims: number;
+  }>;
   workspaces: {
     total: number;
     active: number;
@@ -48,6 +71,19 @@ interface AdminStats {
   }>;
   usersByDay: Array<{ date: string; count: number }>;
   workspacesByStatus: Array<{ status: string; count: number }>;
+}
+
+interface Incident {
+  id: string;
+  kind: string;
+  severity: "sev1" | "sev2" | "sev3" | "sev4";
+  title: string;
+  status: "open" | "acknowledged" | "resolved";
+  firstSeenAt: string;
+  lastSeenAt: string;
+  occurrences: number;
+  affectedUsers: number;
+  affectedWorkspaces: number;
 }
 
 interface SnapshotData {
@@ -410,7 +446,7 @@ export default function AdminPage() {
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<
-    "overview" | "users" | "workspaces" | "snapshots"
+    "overview" | "incidents" | "users" | "workspaces" | "snapshots"
   >("overview");
 
   useEffect(() => {
@@ -442,7 +478,7 @@ export default function AdminPage() {
   return (
     <div className="space-y-6">
       <div className="flex gap-1 border-b border">
-        {(["overview", "users", "workspaces", "snapshots"] as const).map((t) => (
+        {(["overview", "incidents", "users", "workspaces", "snapshots"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -459,6 +495,7 @@ export default function AdminPage() {
       </div>
 
       {tab === "overview" && <OverviewTab stats={stats} />}
+      {tab === "incidents" && <IncidentsTab />}
       {tab === "users" && <UsersTab stats={stats} />}
       {tab === "workspaces" && <WorkspacesTab stats={stats} />}
       {tab === "snapshots" && <SnapshotsTab />}
@@ -485,24 +522,24 @@ function OverviewTab({ stats }: { stats: AdminStats }) {
     <div className="space-y-6">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          title="Total Users"
-          value={stats.users.total}
-          subtitle={`${stats.users.regular} registered, ${stats.users.guests} guests`}
+          title="Error-Free Launch Rate (24h)"
+          value={`${(stats.overview?.errorFreeLaunchRate24h ?? 100).toFixed(1)}%`}
+          subtitle={`${(stats.overview?.errorFreeLaunchRate7d ?? 100).toFixed(1)}% over 7d`}
         />
         <StatCard
-          title="Total Workspaces"
-          value={stats.workspaces.total}
-          subtitle={`${stats.workspaces.active} active`}
+          title="Active Incidents"
+          value={stats.overview?.activeIncidents ?? 0}
+          subtitle="Open operational incidents"
         />
         <StatCard
-          title="Warm Pool"
-          value={stats.warmPool.available}
-          subtitle={`${stats.warmPool.available} available of ${stats.warmPool.total}`}
+          title="Launch P95 (ms)"
+          value={Math.round(stats.overview?.launchP95Ms ?? 0)}
+          subtitle={`P50 ${Math.round(stats.overview?.launchP50Ms ?? 0)} ms`}
         />
         <StatCard
-          title="Error Workspaces"
-          value={stats.workspaces.error}
-          subtitle="Workspaces in error state"
+          title="Pool Hit Rate (24h)"
+          value={`${(stats.overview?.poolHitRate24h ?? 0).toFixed(1)}%`}
+          subtitle={`API Error Rate ${(stats.overview?.apiErrorRate24h ?? 0).toFixed(1)}%`}
         />
       </div>
 
@@ -562,6 +599,282 @@ function OverviewTab({ stats }: { stats: AdminStats }) {
           ]}
         />
       </div>
+    </div>
+  );
+}
+
+function IncidentsTab() {
+  const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [incidentActions, setIncidentActions] = useState<
+    Array<{
+      id: string;
+      actionType: string;
+      result: "success" | "failed";
+      error: string | null;
+      createdAt: string;
+    }>
+  >([]);
+  const [posthogLinks, setPosthogLinks] = useState<{
+    errorTracking: string | null;
+    sessionReplay: string | null;
+    activity: string | null;
+  } | null>(null);
+  const [posthogSearchTerm, setPosthogSearchTerm] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<Incident | null>(null);
+  const [action, setAction] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<"all" | "open" | "acknowledged" | "resolved">("all");
+
+  const fetchIncidents = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const qp = statusFilter === "all" ? "" : `?status=${statusFilter}`;
+      const res = await fetch(`/api/admin/incidents${qp}`);
+      if (!res.ok) throw new Error("Failed to load incidents");
+      const body = await res.json();
+      setIncidents(body.incidents ?? []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load incidents");
+    } finally {
+      setLoading(false);
+    }
+  }, [statusFilter]);
+
+  useEffect(() => {
+    void fetchIncidents();
+  }, [fetchIncidents]);
+
+  useEffect(() => {
+    if (!selected) {
+      setIncidentActions([]);
+      setPosthogLinks(null);
+      setPosthogSearchTerm(null);
+      return;
+    }
+
+    void fetch(`/api/admin/incidents/${selected.id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        setIncidentActions(data?.actions ?? []);
+        setPosthogLinks(data?.posthogLinks ?? null);
+        setPosthogSearchTerm(data?.posthogSearchTerm ?? null);
+      })
+      .catch(() => {
+        setIncidentActions([]);
+        setPosthogLinks(null);
+        setPosthogSearchTerm(null);
+      });
+  }, [selected]);
+
+  const runAction = async (actionType: string) => {
+    if (!selected) return;
+    setAction(actionType);
+    setError(null);
+    captureEvent("admin_incident_action_triggered", {
+      incidentId: selected.id,
+      actionType,
+      severity: selected.severity,
+      status: selected.status,
+    });
+
+    try {
+      const res = await fetch(`/api/admin/incidents/${selected.id}/actions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actionType,
+          targetType: "incident",
+          targetId: selected.id,
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? "Action failed");
+      captureEvent("admin_incident_action_result", {
+        incidentId: selected.id,
+        actionType,
+        result: "success",
+      });
+      await fetchIncidents();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Action failed";
+      setError(message);
+      captureEvent("admin_incident_action_result", {
+        incidentId: selected.id,
+        actionType,
+        result: "failed",
+        error: message,
+      });
+    } finally {
+      setAction(null);
+    }
+  };
+
+  const columns = useMemo<ColumnDef<Incident>[]>(
+    () => [
+      {
+        accessorKey: "title",
+        header: "Title",
+        cell: ({ row }) => <span className="text-copy-14 text-foreground">{row.original.title}</span>,
+      },
+      {
+        accessorKey: "severity",
+        header: "Severity",
+        cell: ({ row }) => (
+          <Badge
+            variant="outline"
+            className={cn(
+              row.original.severity === "sev1" && "border-red-300 bg-red-100 text-red-900",
+              row.original.severity === "sev2" && "border-amber-300 bg-amber-100 text-amber-900",
+              row.original.severity === "sev3" && "border-blue-300 bg-blue-100 text-blue-900",
+              row.original.severity === "sev4" && "border bg-muted text-muted-foreground",
+            )}
+          >
+            {row.original.severity}
+          </Badge>
+        ),
+      },
+      {
+        accessorKey: "status",
+        header: "Status",
+        cell: ({ row }) => (
+          <Badge variant="outline" className={row.original.status === "open" ? "border-red-300 bg-red-100 text-red-900" : "border bg-muted text-foreground"}>
+            {row.original.status}
+          </Badge>
+        ),
+      },
+      {
+        accessorKey: "occurrences",
+        header: "Occurrences",
+      },
+      {
+        accessorKey: "lastSeenAt",
+        header: "Last Seen",
+        cell: ({ row }) => new Date(row.original.lastSeenAt).toLocaleString(),
+      },
+    ],
+    [],
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        {(["all", "open", "acknowledged", "resolved"] as const).map((status) => (
+          <Button
+            key={status}
+            variant={statusFilter === status ? "default" : "secondary"}
+            size="sm"
+            onClick={() => setStatusFilter(status)}
+          >
+            {status}
+          </Button>
+        ))}
+      </div>
+
+      {error ? <p className="text-copy-13 text-red-700">{error}</p> : null}
+
+      {loading ? (
+        <div className="flex items-center justify-center h-40"><Spinner size="lg" /></div>
+      ) : (
+        <MainDataTable
+          columns={columns}
+          data={incidents}
+          filterColumnId="title"
+          filterPlaceholder="Search incidents..."
+          getRowId={(row) => row.id}
+          enableRowSelection
+          onSelectionChange={(rows) => setSelected(rows[0] ?? null)}
+        />
+      )}
+
+      {selected ? (
+        <div className="rounded-lg border border bg-background p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-label-14 font-medium text-foreground">{selected.title}</h3>
+            <Badge variant="outline">{selected.status}</Badge>
+          </div>
+          <p className="text-copy-13 text-muted-foreground">
+            {selected.kind} · {selected.occurrences} occurrences · affected users {selected.affectedUsers}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="secondary" disabled={!!action} onClick={() => runAction("replenish_pool")}>
+              {action === "replenish_pool" ? <Spinner size="sm" /> : "Replenish Pool"}
+            </Button>
+            <Button size="sm" variant="secondary" disabled={!!action} onClick={() => runAction("rebuild_gui_snapshot")}>
+              {action === "rebuild_gui_snapshot" ? <Spinner size="sm" /> : "Rebuild GUI"}
+            </Button>
+            <Button size="sm" variant="secondary" disabled={!!action} onClick={() => runAction("rebuild_cli_snapshot")}>
+              {action === "rebuild_cli_snapshot" ? <Spinner size="sm" /> : "Rebuild CLI"}
+            </Button>
+            <Button size="sm" disabled={!!action} onClick={() => runAction("mark_resolved")}>
+              {action === "mark_resolved" ? <Spinner size="sm" /> : "Mark Resolved"}
+            </Button>
+          </div>
+          {(posthogLinks?.errorTracking ||
+            posthogLinks?.sessionReplay ||
+            posthogLinks?.activity) && (
+            <div className="rounded-md border border bg-background p-3 space-y-2">
+              <p className="text-copy-12 text-muted-foreground">
+                Observability Links
+                {posthogSearchTerm ? ` (query: ${posthogSearchTerm})` : ""}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {posthogLinks?.errorTracking ? (
+                  <a
+                    href={posthogLinks.errorTracking}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex h-8 items-center rounded-md border px-3 text-copy-13 hover:bg-muted"
+                  >
+                    Open Error Tracking
+                  </a>
+                ) : null}
+                {posthogLinks?.sessionReplay ? (
+                  <a
+                    href={posthogLinks.sessionReplay}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex h-8 items-center rounded-md border px-3 text-copy-13 hover:bg-muted"
+                  >
+                    Open Session Replay
+                  </a>
+                ) : null}
+                {posthogLinks?.activity ? (
+                  <a
+                    href={posthogLinks.activity}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex h-8 items-center rounded-md border px-3 text-copy-13 hover:bg-muted"
+                  >
+                    Open Activity
+                  </a>
+                ) : null}
+              </div>
+            </div>
+          )}
+          <div className="rounded-md border border bg-background">
+            <div className="px-3 py-2 border-b border text-copy-12 text-muted-foreground">
+              Action Audit Trail
+            </div>
+            <div className="p-3 space-y-2">
+              {incidentActions.length === 0 ? (
+                <p className="text-copy-13 text-muted-foreground">No admin actions recorded yet.</p>
+              ) : (
+                incidentActions.map((entry) => (
+                  <div key={entry.id} className="flex items-center justify-between gap-3 text-copy-13">
+                    <span className="text-foreground">{entry.actionType}</span>
+                    <span className={entry.result === "failed" ? "text-red-700" : "text-green-700"}>
+                      {entry.result}
+                    </span>
+                    <span className="text-muted-foreground">{new Date(entry.createdAt).toLocaleString()}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
