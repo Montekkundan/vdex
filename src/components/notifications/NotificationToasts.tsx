@@ -11,6 +11,13 @@ const URGENCY_BORDER: Record<NotificationUrgency, string> = {
   critical: "border-red-500/50",
 };
 
+const SEVERITY_BADGE: Record<string, string> = {
+  info: "bg-blue-100 text-blue-900",
+  warning: "bg-amber-100 text-amber-900",
+  error: "bg-red-100 text-red-900",
+  critical: "bg-red-200 text-red-900",
+};
+
 export function NotificationToasts() {
   const notifications = useNotificationStore((s) => s.notifications);
   const dismissNotification = useNotificationStore((s) => s.dismissNotification);
@@ -36,11 +43,20 @@ export function NotificationToasts() {
             />
           )}
           <div className="min-w-0 flex-1">
-            {notif.appName && (
-              <p className="truncate text-label-12 text-gray-700">
-                {notif.appName}
-              </p>
-            )}
+            <div className="flex items-center gap-1.5">
+              {(notif.appName || notif.source) && (
+                <p className="truncate text-label-12 text-gray-700">
+                  {notif.appName || notif.source?.toUpperCase()}
+                </p>
+              )}
+              {notif.severity && (
+                <span
+                  className={`rounded px-1 py-0.5 text-[10px] uppercase tracking-wide ${SEVERITY_BADGE[notif.severity] ?? "bg-gray-alpha-200 text-gray-900"}`}
+                >
+                  {notif.severity}
+                </span>
+              )}
+            </div>
             <p className="truncate text-label-13 text-gray-1000">
               {notif.summary}
             </p>

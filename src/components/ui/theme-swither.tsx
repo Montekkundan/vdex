@@ -2,13 +2,20 @@
 
 import { useTheme } from "next-themes";
 import clsx from "clsx";
+import { useEffect, useState } from "react";
 
 type TTheme = "system" | "light" | "dark";
 
 export function ThemeSwither() {
   const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const resolvedTheme: TTheme =
-    theme === "light" || theme === "dark" || theme === "system"
+    mounted && (theme === "light" || theme === "dark" || theme === "system")
       ? theme
       : "system";
 

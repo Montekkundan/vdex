@@ -12,6 +12,8 @@ import type {
 } from "xpra-html5-client";
 import { useNotificationStore } from "./notification-store";
 import { useWorkspaceStore } from "./workspace-store";
+import { reportDesktopError } from "@/lib/desktop/report-error";
+import { logDesktop } from "@/lib/desktop/logger";
 
 export interface XpraWindowState {
   wid: number;
@@ -63,6 +65,7 @@ let launchCounter = 0;
 let currentClient: XpraClientType | null = null;
 let connectionId = 0;
 let pasteHandler: (() => void) | null = null;
+let activeWorkers: Worker[] = [];
 
 function isExpectedXpraDisconnectError(message: string): boolean {
   const m = message.toLowerCase();
@@ -95,11 +98,37 @@ export const useXpraStore = create<XpraStore>()((set, get) => ({
     set({ connecting: true, error: null });
 
     import("xpra-html5-client")
-      .then(({ XpraClient, XpraDecodeNullWorker }) => {
+      .then(({ XpraClient, XpraDecodeNullWorker, XpraPacketNullWorker }) => {
         if (thisConnectionId !== connectionId) return;
 
-        const decoder = new XpraDecodeNullWorker();
-        const xpraClient = new XpraClient({ decoder });
+        let decoder: Worker | InstanceType<typeof XpraDecodeNullWorker>;
+        let worker: Worker | InstanceType<typeof XpraPacketNullWorker>;
+
+        try {
+          const packetWorker = new Worker(
+            new URL("../workers/xpra-packet.worker.ts", import.meta.url),
+            { type: "module" },
+          );
+          const decodeWorker = new Worker(
+            new URL("../workers/xpra-decode.worker.ts", import.meta.url),
+            { type: "module" },
+          );
+          activeWorkers = [packetWorker, decodeWorker];
+          worker = packetWorker;
+          decoder = decodeWorker;
+        } catch (err) {
+          worker = new XpraPacketNullWorker();
+          decoder = new XpraDecodeNullWorker();
+          activeWorkers = [];
+          logDesktop(
+            "warn",
+            "xpra",
+            "Web workers unavailable. Falling back to null workers.",
+            { error: err, onceKey: "xpra-null-worker-fallback" },
+          );
+        }
+
+        const xpraClient = new XpraClient({ decoder, worker });
         currentClient = xpraClient;
 
         xpraClient.on("connect", () => {
@@ -107,17 +136,25 @@ export const useXpraStore = create<XpraStore>()((set, get) => ({
         });
 
         xpraClient.on("disconnect", () => {
+          logDesktop("info", "xpra", "Disconnected from display.");
           set({ connected: false, connecting: false, error: null });
         });
 
         xpraClient.on("error", (message: string) => {
           if (isExpectedXpraDisconnectError(message)) {
-            // Sandbox expiry / reconnect races are expected; avoid noisy dev overlay.
-            console.warn("[Xpra] Disconnect:", message);
+            logDesktop("info", "xpra", `Expected disconnect: ${message}`, {
+              onceKey: "xpra-expected-disconnect",
+            });
             set({ error: null, connecting: false });
             return;
           }
-          console.error("[Xpra] Error:", message);
+          reportDesktopError({
+            source: "xpra",
+            severity: "error",
+            message: "Display connection error",
+            details: message,
+            dedupeKey: `xpra:error:${message}`,
+          });
           set({ error: message, connecting: false });
         });
 
@@ -254,6 +291,8 @@ export const useXpraStore = create<XpraStore>()((set, get) => ({
             icon: notification.icon,
             actions: notification.actions || [],
             expires: notification.expires,
+            source: "xpra",
+            severity: "info",
             workspaceId: useWorkspaceStore.getState().activeWorkspaceId,
           });
         });
@@ -381,7 +420,7 @@ export const useXpraStore = create<XpraStore>()((set, get) => ({
             keyboard: true,
             mouse: true,
             audio: false,
-            video: true,
+            video: false,
             printing: false,
             fileTransfer: true,
             notifications: true,
@@ -395,7 +434,13 @@ export const useXpraStore = create<XpraStore>()((set, get) => ({
         set({ client: xpraClient });
       })
       .catch((err) => {
-        console.error("[Xpra] Failed to load:", err);
+        reportDesktopError({
+          source: "xpra",
+          severity: "error",
+          message: "Failed to load XPRA client",
+          details: err instanceof Error ? err.message : String(err),
+          dedupeKey: "xpra-load-failed",
+        });
         set({ error: "Failed to load Xpra client", connecting: false });
       });
   },
@@ -405,6 +450,12 @@ export const useXpraStore = create<XpraStore>()((set, get) => ({
     if (client) client.disconnect();
     if (currentClient && currentClient !== client) currentClient.disconnect();
     currentClient = null;
+    for (const w of activeWorkers) {
+      try {
+        w.terminate();
+      } catch {}
+    }
+    activeWorkers = [];
     if (pasteHandler) {
       document.removeEventListener("paste", pasteHandler);
       pasteHandler = null;
@@ -487,17 +538,15 @@ export const useXpraStore = create<XpraStore>()((set, get) => ({
         .getState()
         .workspaces.find((ws) => ws.id === activeWorkspaceId);
       const isStopped = activeWorkspace?.status !== "active";
-      useNotificationStore.getState().addNotification({
-        id: Date.now(),
-        replacesId: 0,
-        summary: "Cannot launch app",
-        body: isStopped
+      reportDesktopError({
+        source: "xpra",
+        severity: "warning",
+        message: "Cannot launch app",
+        details: isStopped
           ? "This VM is stopped or expired. Go to Workspaces and press Start."
           : "Not connected to display server. Try again in a moment.",
-        icon: null,
-        actions: [],
-        expires: 6000,
         workspaceId: activeWorkspaceId,
+        dedupeKey: "xpra-launch-not-connected",
       });
       return;
     }
@@ -508,15 +557,13 @@ export const useXpraStore = create<XpraStore>()((set, get) => ({
     const launchWorkspaceId = useWorkspaceStore.getState().activeWorkspaceId;
     const timer = setTimeout(() => {
       pendingLaunches.delete(launchId);
-      useNotificationStore.getState().addNotification({
-        id: Date.now(),
-        replacesId: 0,
-        summary: "App may have failed to start",
-        body: `"${command}" did not open a window within ${LAUNCH_TIMEOUT_MS / 1000}s. It may have crashed on startup.`,
-        icon: null,
-        actions: [],
-        expires: 8000,
+      reportDesktopError({
+        source: "xpra",
+        severity: "warning",
+        message: "App may have failed to start",
+        details: `"${command}" did not open a window within ${LAUNCH_TIMEOUT_MS / 1000}s. It may have crashed on startup.`,
         workspaceId: launchWorkspaceId,
+        dedupeKey: `xpra-launch-timeout:${command}`,
       });
     }, LAUNCH_TIMEOUT_MS);
     pendingLaunches.set(launchId, { command, timer });

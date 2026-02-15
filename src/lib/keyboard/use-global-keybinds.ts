@@ -21,7 +21,9 @@ export function useGlobalKeybinds() {
     selectedIndex: 0,
   });
   const switcherRef = useRef(switcher);
-  switcherRef.current = switcher;
+  useEffect(() => {
+    switcherRef.current = switcher;
+  }, [switcher]);
 
   const [launcherToggle, setLauncherToggle] = useState(0);
 

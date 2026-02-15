@@ -35,6 +35,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
+import { reportDesktopError } from "@/lib/desktop/report-error";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -90,12 +91,12 @@ export function AppStore() {
   // Debounce search
   useEffect(() => {
     if (searchTimer.current) clearTimeout(searchTimer.current);
-    searchTimer.current = setTimeout(() => setDebouncedSearch(search), 300);
+    searchTimer.current = setTimeout(() => {
+      setDebouncedSearch(search);
+      setOffset(0);
+    }, 300);
     return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
   }, [search]);
-
-  // Reset offset when view/search changes
-  useEffect(() => { setOffset(0); }, [view, debouncedSearch]);
 
   // ---- SWR queries (cached across tab switches) ----
 
@@ -166,6 +167,13 @@ export function AppStore() {
         }
       } catch {
         setActionStatus("error");
+        reportDesktopError({
+          source: "system",
+          severity: "error",
+          message: `Failed to install package "${name}"`,
+          details: "Package installation request failed.",
+          dedupeKey: `app-store-install-${name}`,
+        });
       }
     },
     [servicesDomain, post, mutateInstalled, mutatePackages],
@@ -188,6 +196,13 @@ export function AppStore() {
         }
       } catch {
         setActionStatus("error");
+        reportDesktopError({
+          source: "system",
+          severity: "error",
+          message: `Failed to remove package "${name}"`,
+          details: "Package removal request failed.",
+          dedupeKey: `app-store-remove-${name}`,
+        });
       }
     },
     [servicesDomain, post, mutateInstalled, mutatePackages],
@@ -205,8 +220,16 @@ export function AppStore() {
         void mutateRepos();
         setActionStatus(null);
       } catch (err) {
-        setActionLog(err instanceof Error ? err.message : "Failed to add repo");
+        const message = err instanceof Error ? err.message : "Failed to add repo";
+        setActionLog(message);
         setActionStatus("error");
+        reportDesktopError({
+          source: "system",
+          severity: "error",
+          message: "Failed to add repository",
+          details: message,
+          dedupeKey: `app-store-add-repo-${repoUrl.trim()}`,
+        });
       }
     },
     [post, repoUrl, mutateRepos],
@@ -254,9 +277,9 @@ export function AppStore() {
           <SplitPane.Panel className="bg-gray-alpha-50">
             <SidebarNav label="Views">
               <SidebarNav.Group title="Packages">
-                <SidebarNav.Item active={view === "gui-apps"} onClick={() => { setView("gui-apps"); setSearch(""); setSelectedPkg(null); }} icon={<Globe />}>GUI Apps</SidebarNav.Item>
-                <SidebarNav.Item active={view === "installed"} onClick={() => { setView("installed"); setSearch(""); setSelectedPkg(null); }} icon={<CheckCircle />} suffix={installedNames.size}>Installed</SidebarNav.Item>
-                <SidebarNav.Item active={view === "search"} onClick={() => setView("search")} icon={<Store />}>All Packages</SidebarNav.Item>
+                <SidebarNav.Item active={view === "gui-apps"} onClick={() => { setView("gui-apps"); setSearch(""); setSelectedPkg(null); setOffset(0); }} icon={<Globe />}>GUI Apps</SidebarNav.Item>
+                <SidebarNav.Item active={view === "installed"} onClick={() => { setView("installed"); setSearch(""); setSelectedPkg(null); setOffset(0); }} icon={<CheckCircle />} suffix={installedNames.size}>Installed</SidebarNav.Item>
+                <SidebarNav.Item active={view === "search"} onClick={() => { setView("search"); setOffset(0); }} icon={<Store />}>All Packages</SidebarNav.Item>
               </SidebarNav.Group>
 
               <SidebarNav.Group title="Repos">

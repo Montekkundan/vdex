@@ -15,6 +15,13 @@ function formatTime(timestamp: number): string {
   });
 }
 
+const SEVERITY_BADGE: Record<string, string> = {
+  info: "bg-blue-100 text-blue-900",
+  warning: "bg-amber-100 text-amber-900",
+  error: "bg-red-100 text-red-900",
+  critical: "bg-red-200 text-red-900",
+};
+
 export function NotificationCenter() {
   const centerOpen = useNotificationStore((s) => s.centerOpen);
   const history = useNotificationStore((s) => s.history);
@@ -99,9 +106,18 @@ export function NotificationCenter() {
                   <div className="flex items-baseline justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       {notif.appName && (
-                        <p className="truncate text-label-12 text-gray-700">
-                          {notif.appName}
-                        </p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="truncate text-label-12 text-gray-700">
+                            {notif.appName}
+                          </p>
+                          {notif.severity && (
+                            <span
+                              className={`rounded px-1 py-0.5 text-[10px] uppercase tracking-wide ${SEVERITY_BADGE[notif.severity] ?? "bg-gray-alpha-200 text-gray-900"}`}
+                            >
+                              {notif.severity}
+                            </span>
+                          )}
+                        </div>
                       )}
                       <p className="truncate text-label-13 text-gray-1000">
                         {notif.summary}

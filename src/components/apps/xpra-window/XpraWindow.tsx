@@ -52,12 +52,12 @@ export function XpraWindowCanvas({ win, isFocused }: XpraWindowProps) {
   }, [win.width, win.height, client, win.wid]);
 
   const getCoords = useCallback(
-    (e: React.MouseEvent) => {
+    (clientX: number, clientY: number) => {
       if (!canvasRef.current) return { x: 0, y: 0 };
       const rect = canvasRef.current.getBoundingClientRect();
       return {
-        x: Math.round(e.clientX - rect.left),
-        y: Math.round(e.clientY - rect.top),
+        x: Math.round(clientX - rect.left),
+        y: Math.round(clientY - rect.top),
       };
     },
     [],
@@ -66,7 +66,7 @@ export function XpraWindowCanvas({ win, isFocused }: XpraWindowProps) {
   const handleMouseMove = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
       if (!client) return;
-      const { x, y } = getCoords(e);
+      const { x, y } = getCoords(e.clientX, e.clientY);
       client.sendMouseMove(win.wid, [x, y], []);
     },
     [client, win.wid, getCoords],
@@ -75,7 +75,7 @@ export function XpraWindowCanvas({ win, isFocused }: XpraWindowProps) {
   const handleMouseDown = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
       if (!client) return;
-      const { x, y } = getCoords(e);
+      const { x, y } = getCoords(e.clientX, e.clientY);
       const button = e.button === 0 ? 1 : e.button === 2 ? 3 : 2;
       client.sendMouseButton(win.wid, [x, y], button, true, []);
       focusWindow(win.wid);
@@ -86,24 +86,28 @@ export function XpraWindowCanvas({ win, isFocused }: XpraWindowProps) {
   const handleMouseUp = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
       if (!client) return;
-      const { x, y } = getCoords(e);
+      const { x, y } = getCoords(e.clientX, e.clientY);
       const button = e.button === 0 ? 1 : e.button === 2 ? 3 : 2;
       client.sendMouseButton(win.wid, [x, y], button, false, []);
     },
     [client, win.wid, getCoords],
   );
 
-  const handleWheel = useCallback(
-    (e: React.WheelEvent<HTMLCanvasElement>) => {
-      if (!client) return;
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !client) return;
+
+    const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
-      const { x, y } = getCoords(e as unknown as React.MouseEvent);
+      const { x, y } = getCoords(e.clientX, e.clientY);
       const button = e.deltaY < 0 ? 4 : 5;
-      const distance = Math.abs(e.deltaY);
+      const distance = Math.max(1, Math.abs(e.deltaY));
       client.sendMouseWheel(win.wid, button, distance, [x, y], []);
-    },
-    [client, win.wid, getCoords],
-  );
+    };
+
+    canvas.addEventListener("wheel", handleWheel, { passive: false });
+    return () => canvas.removeEventListener("wheel", handleWheel);
+  }, [client, win.wid, getCoords]);
 
   // Keyboard forwarding when this window is focused
   useEffect(() => {
@@ -156,10 +160,13 @@ export function XpraWindowCanvas({ win, isFocused }: XpraWindowProps) {
       onMouseMove={handleMouseMove}
       onMouseDown={handleMouseDown}
       onMouseUp={handleMouseUp}
-      onWheel={handleWheel}
       onContextMenu={(e) => e.preventDefault()}
       className="block h-full w-full bg-neutral-900"
-      style={cursorStyle ? { cursor: cursorStyle } : undefined}
+      style={
+        cursorStyle
+          ? { cursor: cursorStyle, touchAction: "none", overscrollBehavior: "contain" }
+          : { touchAction: "none", overscrollBehavior: "contain" }
+      }
     />
   );
 }

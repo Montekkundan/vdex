@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useDesktopStore } from "@/stores/desktop-store";
 import {
   Command,
@@ -17,26 +17,19 @@ import { useLaunchApp, getAppId } from "@/lib/hooks/use-launch-app";
 import type { DesktopEntry } from "@/types/desktop-entry";
 
 export function AppLauncher({ externalToggle }: { externalToggle?: number }) {
-  const [open, setOpen] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
   const apps = useDesktopStore((s) => s.apps);
   const launchApp = useLaunchApp();
+  const externalParity = ((externalToggle ?? 0) & 1) === 1;
+  const open = manualOpen !== externalParity;
+  const setOpen = (next: boolean) => {
+    setManualOpen(next !== externalParity);
+  };
 
-  // Toggle from centralized keybind system
-  const toggleRef = useRef(externalToggle);
-  useEffect(() => {
-    if (externalToggle !== undefined && externalToggle !== toggleRef.current) {
-      toggleRef.current = externalToggle;
-      setOpen((prev) => !prev);
-    }
-  }, [externalToggle]);
-
-  const launch = useCallback(
-    (entry: DesktopEntry) => {
-      launchApp(entry);
-      setOpen(false);
-    },
-    [launchApp],
-  );
+  const launch = (entry: DesktopEntry) => {
+    launchApp(entry);
+    setOpen(false);
+  };
 
   const builtinApps = apps.filter(
     (a) => a.type === "builtin",

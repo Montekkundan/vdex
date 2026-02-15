@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { Note } from "@/components/ui/note";
+import { reportDesktopError } from "@/lib/desktop/report-error";
 
 interface FileEntry {
   name: string;
@@ -194,7 +195,13 @@ export function FileManager() {
         await op();
       } catch (err) {
         const message = err instanceof Error ? err.message : "Operation failed";
-        globalThis.alert(message);
+        reportDesktopError({
+          source: "files",
+          severity: "error",
+          message: "File operation failed",
+          details: message,
+          dedupeKey: `files-mutation-${action}-${message}`,
+        });
       } finally {
         setMutating(null);
       }

@@ -1,6 +1,4 @@
 "use client";
-
-import { useEffect, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -44,12 +42,6 @@ export function TerminalSettingsDialog({
   onChange,
   onReset,
 }: TerminalSettingsDialogProps) {
-  const [fontSizeInput, setFontSizeInput] = useState(String(settings.fontSize));
-
-  useEffect(() => {
-    setFontSizeInput(String(settings.fontSize));
-  }, [settings.fontSize]);
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
@@ -91,10 +83,9 @@ export function TerminalSettingsDialog({
               id="terminal-font-size"
               type="text"
               inputMode="numeric"
-              value={fontSizeInput}
+              value={String(settings.fontSize)}
               onChange={(event) => {
                 const raw = event.target.value.replace(/[^\d]/g, "");
-                setFontSizeInput(raw);
                 if (raw.length === 0) return;
                 const parsed = Number(raw);
                 if (!Number.isFinite(parsed)) return;
@@ -110,7 +101,7 @@ export function TerminalSettingsDialog({
                 });
               }}
               onBlur={() => {
-                const parsed = Number(fontSizeInput);
+                const parsed = Number(settings.fontSize);
                 const safe = Number.isFinite(parsed)
                   ? Math.min(
                       TERMINAL_FONT_SIZE_MAX,
@@ -121,7 +112,6 @@ export function TerminalSettingsDialog({
                   ...settings,
                   fontSize: safe,
                 });
-                setFontSizeInput(String(safe));
               }}
             />
           </div>

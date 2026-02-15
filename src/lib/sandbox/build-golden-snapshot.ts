@@ -128,6 +128,21 @@ export DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/vdesk-dbus
 export GIO_USE_SYSTEMD=0
 PROFILEEOF
 
+# Interactive shell env normalization:
+# Some sandbox hosts inject non-standard NODE_ENV values (e.g. preview/staging)
+# which causes next dev to warn or exit. Keep service env unchanged; only
+# sanitize for interactive terminals sourced through profile scripts.
+sudo tee /etc/profile.d/sandbox-shell-env.sh > /dev/null << 'SHELLENVEOF'
+case "$-" in
+  *i*)
+    case "\${NODE_ENV:-}" in
+      ""|development|production|test) ;;
+      *) unset NODE_ENV ;;
+    esac
+    ;;
+esac
+SHELLENVEOF
+
 # Default GTK theme (user's theme sync will override at runtime)
 #
 # CSD (Client-Side Decorations) hiding strategy:
@@ -251,7 +266,7 @@ if command -v firefox &> /dev/null; then
     fi
   fi
 
-  # User preferences: skip first-run, disable HW accel (no GPU in sandbox)
+  # User preferences: skip first-run, prefer modern compositor path for XPRA
   if [ -d "$FIREFOX_PROFILE_DIR/default" ]; then
     cat > "$FIREFOX_PROFILE_DIR/default/user.js" << 'USERJS_EOF'
 user_pref("browser.startup.homepage", "about:blank");
@@ -263,8 +278,8 @@ user_pref("browser.startup.firstrunSkipsHomepage", true);
 user_pref("datareporting.policy.dataSubmissionPolicyBypassNotification", true);
 user_pref("browser.aboutwelcome.enabled", false);
 user_pref("toolkit.legacyUserProfileCustomizations.stylesheets", true);
-user_pref("gfx.webrender.all", false);
-user_pref("layers.acceleration.disabled", true);
+user_pref("gfx.webrender.software", true);
+user_pref("layers.acceleration.disabled", false);
 user_pref("browser.tabs.warnOnClose", false);
 user_pref("browser.shell.checkDefaultBrowser", false);
 user_pref("browser.rights.3.shown", true);
@@ -306,6 +321,34 @@ for rc in "$HOME/.profile" "$HOME/.bash_profile" "$HOME/.bashrc"; do
 done
 `;
 
+  const bunPathScript = `
+set -euo pipefail
+
+if [ ! -x "$HOME/.bun/bin/bun" ]; then
+  echo "Bun binary not found at $HOME/.bun/bin/bun" >&2
+  exit 1
+fi
+
+sudo ln -sf "$HOME/.bun/bin/bun" /usr/local/bin/bun
+
+sudo tee /etc/profile.d/sandbox-bun-path.sh > /dev/null << 'BUNPATHEOF'
+if [ -d "$HOME/.bun/bin" ]; then
+  case ":$PATH:" in
+    *":$HOME/.bun/bin:"*) ;;
+    *) export PATH="$HOME/.bun/bin:$PATH" ;;
+  esac
+fi
+BUNPATHEOF
+
+for rc in "$HOME/.profile" "$HOME/.bash_profile" "$HOME/.bashrc"; do
+  touch "$rc"
+  grep -q 'export PATH="$HOME/.bun/bin:$PATH"' "$rc" || \
+    echo 'export PATH="$HOME/.bun/bin:$PATH"' >> "$rc"
+done
+
+bun --version
+`;
+
   const displayDepsScript = `
 set -euo pipefail
 
@@ -318,7 +361,8 @@ python3 -m pip install --user websockify
 python3 -c "import websockify"
 
 # noVNC static web client (distro package is not consistently available)
-mkdir -p ${SERVICE_DIR}
+sudo mkdir -p ${SERVICE_DIR}
+sudo chown -R $(whoami) ${SERVICE_DIR}
 if [ ! -f "${SERVICE_DIR}/novnc/vnc.html" ]; then
   rm -rf /tmp/novnc-src
   git clone --depth 1 https://github.com/novnc/noVNC.git /tmp/novnc-src
@@ -407,13 +451,17 @@ echo "  vnc backend: $VNC_BIN"
           [
             // pm2 is required for runtime orchestration
             "npm install -g pm2",
-            "curl -fsSL https://bun.sh/install | bash || true",
+            "curl -fsSL https://bun.sh/install | bash",
             "corepack enable && corepack prepare pnpm@latest --activate || true",
           ].join(" && "),
         );
       },
-      async serviceFiles() {
+      async bunPath() {
         await this.$.npmGlobals;
+        return runStep("Configure Bun PATH", bunPathScript);
+      },
+      async serviceFiles() {
+        await this.$.bunPath;
         await sandbox.runCommand({
           cmd: "bash",
           args: [
@@ -504,6 +552,7 @@ echo "  vnc backend: $VNC_BIN"
           "sudo dnf install -y spal-release",
             "sudo dnf install -y vim-enhanced wget jq tree tmux cpio gcc gcc-c++ make" +
             " xorg-x11-server-Xvfb xorg-x11-server-Xorg xorg-x11-drv-dummy mesa-dri-drivers dbus-x11 xdg-utils git python3-pip xterm xorg-x11-fonts-misc xorg-x11-fonts-Type1 xorg-x11-fonts-100dpi" +
+            " unzip" +
             " cargo rust" +
             " mesa-libEGL mesa-libGLES mesa-libgbm libglvnd-egl libglvnd-gles" +
             " gstreamer1 gstreamer1-plugins-base gstreamer1-plugins-good" +
@@ -578,7 +627,6 @@ echo "  vnc backend: $VNC_BIN"
         "bradlc.vscode-tailwindcss", // Tailwind CSS IntelliSense
         "Vue.volar", // Vue (Official) -- also powers Nuxt
         "astro-build.astro-vscode", // Astro
-        "biomejs.biome", // Biome (linter/formatter)
       ];
       await log(`Installing ${extensions.length} code-server extensions...`);
       await sandbox.runCommand({
@@ -600,15 +648,20 @@ echo "  vnc backend: $VNC_BIN"
         "pm2 + Bun + pnpm",
         [
           "npm install -g pm2",
-          "curl -fsSL https://bun.sh/install | bash || true",
+          "curl -fsSL https://bun.sh/install | bash",
           "corepack enable && corepack prepare pnpm@latest --activate || true",
         ].join(" && "),
       );
     },
 
+    async bunPath() {
+      await this.$.npmGlobals;
+      return runStep("Configure Bun PATH", bunPathScript);
+    },
+
     // Service files + deps — needs pm2 from npmGlobals
     async serviceFiles() {
-      await this.$.npmGlobals;
+      await this.$.bunPath;
 
       await sandbox.runCommand({
         cmd: "bash",

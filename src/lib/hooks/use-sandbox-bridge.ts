@@ -46,11 +46,11 @@ interface BridgeNotificationsResponse {
 export function useDbusNotifications() {
   const { activeWorkspaceId } = useActiveSandbox();
   const { serviceUrl } = useSandboxServiceClient();
-  const sinceRef = useRef(Date.now());
+  const sinceRef = useRef(0);
   const addNotification = useNotificationStore((s) => s.addNotification);
 
   const { data } = useSWR<BridgeNotificationsResponse>(
-    serviceUrl(`/bridge/notifications?since=${sinceRef.current}`),
+    serviceUrl("/bridge/notifications?since=0"),
     sandboxServiceFetcher,
     {
       refreshInterval: 1000,
@@ -79,6 +79,13 @@ export function useDbusNotifications() {
         actions: notif.actions,
         expires: notif.expires,
         urgency: notif.urgency ?? "normal",
+        source: "system",
+        severity:
+          notif.urgency === "critical"
+            ? "critical"
+            : notif.urgency === "low"
+              ? "info"
+              : "warning",
         category: notif.category ?? null,
         transient: notif.transient ?? false,
         workspaceId: activeWorkspaceId,

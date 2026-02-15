@@ -2,6 +2,8 @@ import { create } from "zustand";
 
 export type NotificationUrgency = "low" | "normal" | "critical";
 export type DesktopNotifMode = "background" | "always" | "off";
+export type NotificationSource = "terminal" | "files" | "code" | "xpra" | "system";
+export type NotificationSeverity = "info" | "warning" | "error" | "critical";
 
 export interface DesktopNotification {
   id: number;
@@ -15,6 +17,8 @@ export interface DesktopNotification {
   timestamp: number;
   read: boolean;
   urgency: NotificationUrgency;
+  source: NotificationSource | null;
+  severity: NotificationSeverity;
   category: string | null;
   transient: boolean;
   workspaceId: string | null;
@@ -43,7 +47,32 @@ interface NotificationStore {
   requestBrowserPermission: () => Promise<NotificationPermission>;
   syncBrowserPermission: () => void;
 
-  addNotification: (notification: Omit<DesktopNotification, "timestamp" | "read" | "appName" | "urgency" | "category" | "transient" | "workspaceId"> & Partial<Pick<DesktopNotification, "appName" | "urgency" | "category" | "transient" | "workspaceId">>) => void;
+  addNotification: (
+    notification: Omit<
+      DesktopNotification,
+      | "timestamp"
+      | "read"
+      | "appName"
+      | "urgency"
+      | "source"
+      | "severity"
+      | "category"
+      | "transient"
+      | "workspaceId"
+    > &
+      Partial<
+        Pick<
+          DesktopNotification,
+          | "appName"
+          | "urgency"
+          | "source"
+          | "severity"
+          | "category"
+          | "transient"
+          | "workspaceId"
+        >
+      >
+  ) => void;
   dismissNotification: (id: number) => void;
   hideNotification: (id: number) => void;
   clearHistory: () => void;
@@ -162,6 +191,14 @@ export const useNotificationStore = create<NotificationStore>()((set, get) => ({
       ...notification,
       appName: notification.appName ?? "",
       urgency: notification.urgency ?? "normal",
+      source: notification.source ?? null,
+      severity:
+        notification.severity ??
+        (notification.urgency === "critical"
+          ? "critical"
+          : notification.urgency === "low"
+            ? "info"
+            : "warning"),
       category: notification.category ?? null,
       transient: notification.transient ?? false,
       workspaceId: notification.workspaceId ?? null,

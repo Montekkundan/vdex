@@ -15,6 +15,7 @@ import {
   normalizeTerminalSettings,
   type TerminalSettings,
 } from "@/lib/terminal/config";
+import { reportDesktopError } from "@/lib/desktop/report-error";
 
 const SERIALIZE_INTERVAL_MS = 5_000;
 const RESTORE_CHUNK_SIZE = 8_192;
@@ -191,6 +192,14 @@ export function TerminalApp({
         ws.onerror = () => {
           if (!disposed) {
             safeWrite("\r\n\x1b[31m[Connection error]\x1b[0m\r\n");
+            reportDesktopError({
+              source: "terminal",
+              severity: "error",
+              message: "Terminal connection error",
+              details: "WebSocket connection to sandbox terminal failed.",
+              dedupeKey: `terminal-ws-error:${activeWorkspaceId}`,
+              workspaceId: activeWorkspaceId,
+            });
           }
         };
 

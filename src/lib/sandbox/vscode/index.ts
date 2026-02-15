@@ -106,6 +106,12 @@ export function getCodeServerFiles(homeDir?: string): Array<{
 
           // Telemetry off
           "telemetry.telemetryLevel": "off",
+
+          // Keep extension/gallery noise low in sandboxed web IDE sessions
+          "extensions.autoCheckUpdates": false,
+          "extensions.autoUpdate": false,
+          "update.mode": "none",
+          "extensions.ignoreRecommendations": true,
         },
         null,
         2,

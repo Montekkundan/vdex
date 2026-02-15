@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 import { useWindowStore, flushWindowSync } from "@/stores/window-store";
@@ -313,19 +313,20 @@ export function DesktopShell({
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const attemptCreateWorkspace = useCallback(() => {
-    createWorkspace().catch((err) => {
-      console.error(
-        `Auto-create workspace failed (attempt ${retryCountRef.current + 1}/${MAX_RETRIES + 1}):`,
-        err,
-      );
-      retryCountRef.current += 1;
-      if (retryCountRef.current <= MAX_RETRIES) {
-        const delay = Math.pow(2, retryCountRef.current - 1) * 1000;
-        retryTimerRef.current = setTimeout(() => {
-          attemptCreateWorkspace();
-        }, delay);
-      }
-    });
+    const runAttempt = () => {
+      createWorkspace().catch((err) => {
+        console.error(
+          `Auto-create workspace failed (attempt ${retryCountRef.current + 1}/${MAX_RETRIES + 1}):`,
+          err,
+        );
+        retryCountRef.current += 1;
+        if (retryCountRef.current <= MAX_RETRIES) {
+          const delay = Math.pow(2, retryCountRef.current - 1) * 1000;
+          retryTimerRef.current = setTimeout(runAttempt, delay);
+        }
+      });
+    };
+    runAttempt();
   }, [createWorkspace]);
 
   // Clean up retry timer on unmount
@@ -335,17 +336,30 @@ export function DesktopShell({
     };
   }, []);
 
-  const [slugError, setSlugError] = useState<string | null>(null);
   const [returningToHub, setReturningToHub] = useState(false);
   const [shutdownDialogOpen, setShutdownDialogOpen] = useState(false);
   const [shutdownWithSnapshot, setShutdownWithSnapshot] = useState(false);
   const [shutdownWithoutSnapshot, setShutdownWithoutSnapshot] = useState(false);
   const [cliSettingsOpen, setCliSettingsOpen] = useState(false);
-  const [cliTerminalSettings, setCliTerminalSettings] = useState<TerminalSettings>(
-    DEFAULT_TERMINAL_SETTINGS,
-  );
+  const [cliSettingsVersion, setCliSettingsVersion] = useState(0);
   const cliActiveSandboxId =
     activeWorkspaceId ? sandboxes[activeWorkspaceId]?.sandboxId ?? null : null;
+  const cliTerminalSettings = useMemo<TerminalSettings>(() => {
+    // Force refresh after explicit save/reset operations.
+    void cliSettingsVersion;
+    if (activeWorkspaceExperience !== "cli") return DEFAULT_TERMINAL_SETTINGS;
+    if (!cliActiveSandboxId) return DEFAULT_TERMINAL_SETTINGS;
+    return loadSandboxTerminalSettings(cliActiveSandboxId);
+  }, [activeWorkspaceExperience, cliActiveSandboxId, cliSettingsVersion]);
+  const slugError = useMemo(() => {
+    if (strictTargetRoute || !targetSlug || workspacesLoading) return null;
+    const decoded = decodeURIComponent(targetSlug);
+    const match = workspaces.find(
+      (w) => slugify(w.name) === slugify(decoded) || w.id === decoded,
+    );
+    if (match) return null;
+    return `Workspace "${decoded}" not found.`;
+  }, [strictTargetRoute, targetSlug, workspacesLoading, workspaces]);
 
   useEffect(() => {
     if (workspacesLoading || bootstrappedRef.current) return;
@@ -372,7 +386,6 @@ export function DesktopShell({
         router.replace("/desktop");
         return;
       }
-      setSlugError(`Workspace "${decoded}" not found.`);
       return;
     }
 
@@ -407,30 +420,21 @@ export function DesktopShell({
     router,
   ]);
 
-  useEffect(() => {
-    if (activeWorkspaceExperience !== "cli") return;
-    if (!cliActiveSandboxId) {
-      setCliTerminalSettings(DEFAULT_TERMINAL_SETTINGS);
-      return;
-    }
-    setCliTerminalSettings(loadSandboxTerminalSettings(cliActiveSandboxId));
-  }, [activeWorkspaceExperience, cliActiveSandboxId]);
-
   const handleCliTerminalSettingsChange = useCallback(
     (next: TerminalSettings) => {
-      setCliTerminalSettings(next);
       if (cliActiveSandboxId) {
         saveSandboxTerminalSettings(cliActiveSandboxId, next);
       }
+      setCliSettingsVersion((v) => v + 1);
     },
     [cliActiveSandboxId],
   );
 
   const handleCliTerminalSettingsReset = useCallback(() => {
-    setCliTerminalSettings(DEFAULT_TERMINAL_SETTINGS);
     if (cliActiveSandboxId) {
       saveSandboxTerminalSettings(cliActiveSandboxId, DEFAULT_TERMINAL_SETTINGS);
     }
+    setCliSettingsVersion((v) => v + 1);
   }, [cliActiveSandboxId]);
 
   // Strict slug route behavior: when store marks workspace non-active (for example
@@ -610,7 +614,6 @@ export function DesktopShell({
             <Button
               size="sm"
               onClick={() => {
-                setSlugError(null);
                 router.replace("/desktop");
               }}
             >

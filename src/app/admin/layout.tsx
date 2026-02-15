@@ -1,4 +1,5 @@
 import { getSession } from "@/lib/auth/session";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 export const metadata = {
@@ -27,12 +28,12 @@ export default async function AdminLayout({
           </div>
           <div className="flex items-center gap-3 text-copy-13 text-gray-900">
             <span>{session.email ?? session.name}</span>
-            <a
+            <Link
               href="/desktop"
               className="text-blue-700 hover:underline underline-offset-4"
             >
               Back to Desktop
-            </a>
+            </Link>
           </div>
         </div>
       </header>

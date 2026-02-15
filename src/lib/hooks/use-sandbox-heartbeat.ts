@@ -3,6 +3,8 @@
 import { useEffect, useRef } from "react";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 import { mutateWorkspace } from "@/lib/hooks/use-swr-hooks";
+import { logDesktop } from "@/lib/desktop/logger";
+import { reportDesktopError } from "@/lib/desktop/report-error";
 
 const HEARTBEAT_INTERVAL = 5 * 60 * 1000; // 5 minutes
 const EXTEND_DURATION = 10 * 60 * 1000; // extend by 10 minutes each heartbeat
@@ -49,8 +51,11 @@ export function useSandboxHeartbeat() {
       })
         .then(async (res) => {
           if (res.status === 429) {
-            console.warn(
-              `[heartbeat] Rate limited. Backing off for ${RATE_LIMIT_BACKOFF / 1000}s.`,
+            logDesktop(
+              "warn",
+              "system",
+              `Heartbeat rate limited. Backing off for ${RATE_LIMIT_BACKOFF / 1000}s.`,
+              { onceKey: "heartbeat-rate-limited" },
             );
             backoffRef.current = true;
             setTimeout(() => {
@@ -62,8 +67,11 @@ export function useSandboxHeartbeat() {
           const body = await res.json().catch(() => ({}));
 
           if (body.maxLifetimeReached) {
-            console.warn(
-              `[heartbeat] Max sandbox lifetime reached for workspace ${activeWorkspaceId}. Stopping heartbeat extension; sandbox will expire naturally.`,
+            logDesktop(
+              "info",
+              "system",
+              `Max sandbox lifetime reached for workspace ${activeWorkspaceId}.`,
+              { onceKey: `heartbeat-max-lifetime:${activeWorkspaceId}` },
             );
             stopInterval();
             return;
@@ -71,19 +79,31 @@ export function useSandboxHeartbeat() {
 
           if (!res.ok) {
             if (body.sandboxLost) {
-              console.warn(
-                `[heartbeat] Sandbox lost for workspace ${activeWorkspaceId}. Triggering recovery.`,
-              );
+              reportDesktopError({
+                source: "system",
+                severity: "warning",
+                message: "Workspace display session expired",
+                details:
+                  "The workspace sandbox was lost. Recovery will be attempted automatically.",
+                workspaceId: activeWorkspaceId,
+                dedupeKey: `heartbeat-sandbox-lost:${activeWorkspaceId}`,
+              });
               handleSandboxLost(activeWorkspaceId);
             } else {
-              console.warn(
-                `[heartbeat] Failed to extend sandbox for workspace ${activeWorkspaceId} (${res.status}).`,
+              logDesktop(
+                "warn",
+                "system",
+                `Failed to extend sandbox for workspace ${activeWorkspaceId} (${res.status}).`,
+                { onceKey: `heartbeat-extend-failed:${activeWorkspaceId}` },
               );
             }
           }
         })
         .catch((err) => {
-          console.warn(`[heartbeat] Extend request failed:`, err);
+          logDesktop("warn", "system", "Heartbeat extend request failed.", {
+            error: err,
+            onceKey: "heartbeat-request-failed",
+          });
         });
     }
 

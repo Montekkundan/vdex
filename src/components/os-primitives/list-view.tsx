@@ -4,7 +4,6 @@ import {
   useState,
   useCallback,
   useRef,
-  useEffect,
   type ReactNode,
   type KeyboardEvent,
 } from "react";
@@ -65,10 +64,7 @@ export function ListView<T>({
     (i: number) => Math.max(0, Math.min(items.length - 1, i)),
     [items.length],
   );
-
-  useEffect(() => {
-    setFocusIndex((prev) => clamp(prev));
-  }, [items.length, clamp]);
+  const resolvedFocusIndex = clamp(focusIndex);
 
   const scrollToIndex = useCallback((i: number) => {
     const el = listRef.current?.children[i] as HTMLElement | undefined;
@@ -80,7 +76,7 @@ export function ListView<T>({
       switch (e.key) {
         case "ArrowDown": {
           e.preventDefault();
-          const next = clamp(focusIndex + 1);
+          const next = clamp(resolvedFocusIndex + 1);
           setFocusIndex(next);
           scrollToIndex(next);
           if (!multiSelect) onSelect?.(getKey(items[next]));
@@ -88,7 +84,7 @@ export function ListView<T>({
         }
         case "ArrowUp": {
           e.preventDefault();
-          const prev = clamp(focusIndex - 1);
+          const prev = clamp(resolvedFocusIndex - 1);
           setFocusIndex(prev);
           scrollToIndex(prev);
           if (!multiSelect) onSelect?.(getKey(items[prev]));
@@ -112,7 +108,7 @@ export function ListView<T>({
         case "Enter":
         case " ": {
           e.preventDefault();
-          const item = items[focusIndex];
+          const item = items[resolvedFocusIndex];
           if (item) {
             onSelect?.(getKey(item));
             if (e.key === "Enter") onActivate?.(item);
@@ -121,7 +117,7 @@ export function ListView<T>({
         }
       }
     },
-    [focusIndex, items, clamp, scrollToIndex, onSelect, onActivate, getKey, multiSelect],
+    [resolvedFocusIndex, items, clamp, scrollToIndex, onSelect, onActivate, getKey, multiSelect],
   );
 
   if (items.length === 0) {
@@ -144,7 +140,7 @@ export function ListView<T>({
       {items.map((item, i) => {
         const key = getKey(item);
         const isSelected = selectedSet.has(key);
-        const isFocused = i === focusIndex;
+        const isFocused = i === resolvedFocusIndex;
 
         return (
           <div
