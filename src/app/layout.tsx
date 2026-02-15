@@ -4,7 +4,6 @@ import { GeistMono } from "geist/font/mono";
 import { JetBrains_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { AppFooter } from "@/components/layout/app-footer";
 import "./globals.css";
 
 const jetbrainsMono = JetBrains_Mono({
@@ -29,7 +28,7 @@ export default function RootLayout({
           GeistSans.variable,
           GeistMono.variable,
           jetbrainsMono.variable,
-          "antialiased",
+          "antialiased min-h-screen bg-background w-full mx-auto scroll-smooth ",
         ].join(" ")}
       >
         <ThemeProvider
@@ -41,7 +40,6 @@ export default function RootLayout({
           <TooltipProvider>
             <div className="flex min-h-screen flex-col">
               <div className="flex-1">{children}</div>
-              <AppFooter />
             </div>
           </TooltipProvider>
         </ThemeProvider>
