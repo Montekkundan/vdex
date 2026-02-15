@@ -25,6 +25,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { PageHeader } from "@/components/layout/page-header";
 import { SIZE_PROFILES, DISPLAY_CLIENTS, EXPERIENCES, PROVIDERS } from "@/lib/runtime/profiles";
 import { Info } from "lucide-react";
+import { captureEvent } from "@/lib/observability/client";
 
 const GUI_APP_TEMPLATES: Array<{ id: string; label: string; script: string }> = [
   {
@@ -90,12 +91,16 @@ export function ProfilesClient() {
   );
 
   async function runWithState(key: string, fn: () => Promise<void>) {
+    const startedAt = Date.now();
     setError(null);
     setBusy(key);
     try {
       await fn();
+      captureEvent("profiles_action_succeeded", { key, latencyMs: Date.now() - startedAt });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Request failed");
+      const message = err instanceof Error ? err.message : "Request failed";
+      setError(message);
+      captureEvent("profiles_action_failed", { key, errorMessage: message, latencyMs: Date.now() - startedAt });
     } finally {
       setBusy(null);
     }
@@ -197,10 +202,18 @@ export function ProfilesClient() {
                 disabled={!captureName || !captureWorkspaceId || !!busy}
                 onClick={() =>
                   runWithState("capture", async () => {
+                    captureEvent("snapshot_capture_requested", {
+                      workspaceId: captureWorkspaceId,
+                      name: captureName,
+                    });
                     await captureSnapshotMutate({
                       workspaceId: captureWorkspaceId,
                       name: captureName,
                       description: captureDescription || undefined,
+                    });
+                    captureEvent("snapshot_capture_succeeded", {
+                      workspaceId: captureWorkspaceId,
+                      name: captureName,
                     });
                     setCaptureName("");
                     setCaptureDescription("");
@@ -277,10 +290,18 @@ export function ProfilesClient() {
                 disabled={!buildName || !buildScript || !!busy}
                 onClick={() =>
                   runWithState("build", async () => {
+                    captureEvent("snapshot_build_requested", {
+                      name: buildName,
+                      experience: buildExperience,
+                    });
                     await buildSnapshotMutate({
                       name: buildName,
                       installScript: buildScript,
                       description: buildDescription || undefined,
+                      experience: buildExperience,
+                    });
+                    captureEvent("snapshot_build_succeeded", {
+                      name: buildName,
                       experience: buildExperience,
                     });
                     setBuildName("");
@@ -469,6 +490,13 @@ export function ProfilesClient() {
               disabled={!!busy}
               onClick={() =>
                 runWithState("policy-create", async () => {
+                  captureEvent("pool_policy_create_requested", {
+                    provider: policyProvider,
+                    experience: policyExperience,
+                    displayClient: policyExperience === "cli" ? "none" : policyDisplayClient,
+                    sizeProfile: policySizeProfile,
+                    snapshotRefType: policySourceType,
+                  });
                   await createPoolPolicyMutate({
                     provider: policyProvider,
                     experience: policyExperience,
@@ -479,6 +507,12 @@ export function ProfilesClient() {
                       policySourceType === "user_snapshot" ? policySnapshotRefId : null,
                     target: Number(policyTarget || "0"),
                     enabled: true,
+                  });
+                  captureEvent("pool_policy_create_succeeded", {
+                    provider: policyProvider,
+                    experience: policyExperience,
+                    displayClient: policyExperience === "cli" ? "none" : policyDisplayClient,
+                    sizeProfile: policySizeProfile,
                   });
                 })
               }
@@ -509,7 +543,15 @@ export function ProfilesClient() {
                       onChange={(e) => {
                         const value = Number(e.target.value || "0");
                         void runWithState(`policy-target-${policy.id}`, async () => {
+                          captureEvent("pool_policy_update_requested", {
+                            policyId: policy.id,
+                            target: value,
+                          });
                           await updatePoolPolicyMutate(policy.id, { target: value });
+                          captureEvent("pool_policy_update_succeeded", {
+                            policyId: policy.id,
+                            target: value,
+                          });
                         });
                       }}
                     />
@@ -519,7 +561,15 @@ export function ProfilesClient() {
                       disabled={!!busy}
                       onClick={() =>
                         runWithState(`policy-toggle-${policy.id}`, async () => {
+                          captureEvent("pool_policy_update_requested", {
+                            policyId: policy.id,
+                            enabled: !policy.enabled,
+                          });
                           await updatePoolPolicyMutate(policy.id, {
+                            enabled: !policy.enabled,
+                          });
+                          captureEvent("pool_policy_update_succeeded", {
+                            policyId: policy.id,
                             enabled: !policy.enabled,
                           });
                         })
@@ -533,7 +583,13 @@ export function ProfilesClient() {
                       disabled={!!busy}
                       onClick={() =>
                         runWithState(`policy-del-${policy.id}`, async () => {
+                          captureEvent("pool_policy_delete_requested", {
+                            policyId: policy.id,
+                          });
                           await deletePoolPolicyMutate(policy.id);
+                          captureEvent("pool_policy_delete_succeeded", {
+                            policyId: policy.id,
+                          });
                         })
                       }
                     >

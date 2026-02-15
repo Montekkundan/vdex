@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { MainDataTable } from "@/components/ui/main-data-table";
+import { captureEvent } from "@/lib/observability/client";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -58,7 +59,6 @@ export function DesktopHub() {
   const restartWorkspace = useWorkspaceStore((s) => s.restartWorkspace);
   const stopWorkspace = useWorkspaceStore((s) => s.stopWorkspace);
   const killWorkspace = useWorkspaceStore((s) => s.killWorkspace);
-  const creatingStatus = useWorkspaceStore((s) => s.creatingStatus);
   const [actionId, setActionId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -77,6 +77,11 @@ export function DesktopHub() {
   const [shutdownWithoutSnapshot, setShutdownWithoutSnapshot] = useState(false);
   const [deleteWorkspaceTarget, setDeleteWorkspaceTarget] = useState<{ id: string; name: string } | null>(null);
   const [deletingWorkspace, setDeletingWorkspace] = useState(false);
+  const [pendingCreates, setPendingCreates] = useState<Array<{
+    id: string;
+    workspace: (typeof workspaces)[number];
+  }>>([]);
+  const pendingCreateSeqRef = useRef(0);
   const checkedRef = useRef<Set<string>>(new Set());
   const compatibleSnapshots = useMemo(
     () =>
@@ -98,14 +103,21 @@ export function DesktopHub() {
     ],
   );
 
+  const mergedWorkspaces = useMemo(
+    () => [
+      ...pendingCreates.map((entry) => entry.workspace),
+      ...workspaces,
+    ],
+    [pendingCreates, workspaces],
+  );
   const sorted = useMemo(
     () =>
-      [...workspaces].sort((a, b) => {
+      [...mergedWorkspaces].sort((a, b) => {
         if (a.status === "active" && b.status !== "active") return -1;
         if (a.status !== "active" && b.status === "active") return 1;
         return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
       }),
-    [workspaces],
+    [mergedWorkspaces],
   );
   const instanceColumns: ColumnDef<(typeof sorted)[number]>[] = [
       {
@@ -250,30 +262,86 @@ export function DesktopHub() {
   }
 
   async function handleCreate() {
-    setActionId("create");
-    try {
-      const ws = await createWorkspace({
-        name: newWorkspaceName.trim() || undefined,
-        icon: newWorkspaceIcon,
-        provider: newWorkspaceProvider,
-        experience: newWorkspaceExperience,
-        displayClient: newWorkspaceExperience === "gui" ? newWorkspaceDisplayClient : "none",
-        sizeProfile: newWorkspaceSizeProfile,
-        snapshotSource: newWorkspaceSnapshotSource,
-        snapshotRefId:
-          newWorkspaceSnapshotSource === "user_snapshot"
-            ? newWorkspaceSnapshotRefId || undefined
-            : undefined,
+    const startedAt = Date.now();
+    const payload = {
+      name: newWorkspaceName.trim() || undefined,
+      icon: newWorkspaceIcon,
+      provider: newWorkspaceProvider,
+      experience: newWorkspaceExperience,
+      displayClient: newWorkspaceExperience === "gui" ? newWorkspaceDisplayClient : "none",
+      sizeProfile: newWorkspaceSizeProfile,
+      snapshotSource: newWorkspaceSnapshotSource,
+      snapshotRefId:
+        newWorkspaceSnapshotSource === "user_snapshot"
+          ? newWorkspaceSnapshotRefId || undefined
+          : undefined,
+    } as const;
+    captureEvent("workspace_create_requested", payload);
+
+    pendingCreateSeqRef.current += 1;
+    const pendingId = `pending-${Date.now()}-${pendingCreateSeqRef.current}`;
+    const nowIso = new Date().toISOString();
+    const pendingWorkspace = {
+      id: pendingId,
+      name: payload.name ?? `starting-vm-${pendingCreateSeqRef.current}`,
+      icon: payload.icon,
+      sandboxId: null,
+      snapshotId: null,
+      provider: payload.provider,
+      experience: payload.experience,
+      displayClient: payload.displayClient,
+      sizeProfile: payload.sizeProfile,
+      status: "creating" as const,
+      sandboxDomain: null,
+      background: null,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    };
+
+    setPendingCreates((prev) => [{ id: pendingId, workspace: pendingWorkspace }, ...prev]);
+    setCreateDialogOpen(false);
+    resetCreateDialog();
+    setActionError(null);
+
+    void createWorkspace(payload)
+      .then((workspace) => {
+        captureEvent("workspace_create_succeeded", {
+          workspaceId: workspace.id,
+          provider: workspace.provider,
+          experience: workspace.experience,
+          displayClient: workspace.displayClient,
+          sizeProfile: workspace.sizeProfile,
+          status: workspace.status,
+          latencyMs: Date.now() - startedAt,
+        });
+      })
+      .catch((err) => {
+        const message = err instanceof Error ? err.message : "Failed to create workspace";
+        setActionError(message);
+        captureEvent("workspace_create_failed", {
+          ...payload,
+          errorCode: "create_failed",
+          errorMessage: message,
+          latencyMs: Date.now() - startedAt,
+        });
+      })
+      .finally(() => {
+        setPendingCreates((prev) => prev.filter((entry) => entry.id !== pendingId));
       });
-      setCreateDialogOpen(false);
-      resetCreateDialog();
-      router.push(`/desktop/${encodeURIComponent(slugify(ws.name))}`);
-    } finally {
-      setActionId(null);
-    }
   }
 
   async function handleOpen(id: string, name: string, status: string) {
+    const startedAt = Date.now();
+    const workspace = workspaces.find((w) => w.id === id);
+    const meta = {
+      workspaceId: id,
+      provider: workspace?.provider ?? "unknown",
+      experience: workspace?.experience ?? "unknown",
+      displayClient: workspace?.displayClient ?? "unknown",
+      sizeProfile: workspace?.sizeProfile ?? "unknown",
+      status,
+    };
+    captureEvent("workspace_open_requested", meta);
     setActionId(id);
     setActionError(null);
     try {
@@ -283,12 +351,22 @@ export function DesktopHub() {
       if (!probe || !probe.ok) {
         setActionError("Failed to verify sandbox status. Please try again.");
         await mutateWorkspaces();
+        captureEvent("workspace_open_failed", {
+          ...meta,
+          errorCode: "preflight_failed",
+          latencyMs: Date.now() - startedAt,
+        });
         return;
       }
       const body = await probe.json().catch(() => ({}));
       if (body?.sandboxLost) {
         await mutateWorkspaces();
         setActionError("This VM is no longer running. Start it again from snapshot.");
+        captureEvent("workspace_open_failed", {
+          ...meta,
+          errorCode: "sandbox_lost_preflight",
+          latencyMs: Date.now() - startedAt,
+        });
         return;
       }
 
@@ -307,6 +385,11 @@ export function DesktopHub() {
         if (next?.sandboxLost) {
           await mutateWorkspaces();
           setActionError("VM expired while starting. Try again.");
+          captureEvent("workspace_open_failed", {
+            ...meta,
+            errorCode: "sandbox_lost_startup",
+            latencyMs: Date.now() - startedAt,
+          });
           return;
         }
         ready = Boolean(next?.displayReady && next?.servicesReady);
@@ -314,20 +397,61 @@ export function DesktopHub() {
 
       if (!ready) {
         setActionError("VM is taking longer than expected to start display services. Try Open again.");
+        captureEvent("workspace_open_failed", {
+          ...meta,
+          errorCode: "display_timeout",
+          latencyMs: Date.now() - startedAt,
+        });
         return;
       }
 
+      captureEvent("workspace_open_ready", {
+        ...meta,
+        latencyMs: Date.now() - startedAt,
+      });
       router.push(`/desktop/${encodeURIComponent(slugify(name))}`);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to open workspace");
+      captureEvent("workspace_open_failed", {
+        ...meta,
+        errorCode: "open_failed",
+        errorMessage: err instanceof Error ? err.message : "Unknown error",
+        latencyMs: Date.now() - startedAt,
+      });
     } finally {
       setActionId(null);
     }
   }
 
   async function handleStop(id: string, createSnapshot: boolean) {
+    const startedAt = Date.now();
+    const workspace = workspaces.find((w) => w.id === id);
+    const meta = {
+      workspaceId: id,
+      provider: workspace?.provider ?? "unknown",
+      experience: workspace?.experience ?? "unknown",
+      displayClient: workspace?.displayClient ?? "unknown",
+      sizeProfile: workspace?.sizeProfile ?? "unknown",
+      status: workspace?.status ?? "unknown",
+      createSnapshot,
+    };
+    captureEvent("workspace_shutdown_requested", meta);
     setActionId(id);
     try {
       await stopWorkspace(id, { createSnapshot });
+      captureEvent("workspace_shutdown_succeeded", {
+        ...meta,
+        latencyMs: Date.now() - startedAt,
+      });
       setShutdownWorkspace(null);
+    } catch (err) {
+      captureEvent("workspace_shutdown_failed", {
+        ...meta,
+        errorCode: "shutdown_failed",
+        errorMessage: err instanceof Error ? err.message : "Unknown error",
+        latencyMs: Date.now() - startedAt,
+      });
+      setActionError(err instanceof Error ? err.message : "Failed to shutdown workspace");
     } finally {
       setActionId(null);
       setShutdownWithSnapshot(false);
@@ -337,15 +461,36 @@ export function DesktopHub() {
 
   async function handleDeleteWorkspace() {
     if (!deleteWorkspaceTarget) return;
+    const startedAt = Date.now();
+    const workspace = workspaces.find((w) => w.id === deleteWorkspaceTarget.id);
+    const meta = {
+      workspaceId: deleteWorkspaceTarget.id,
+      provider: workspace?.provider ?? "unknown",
+      experience: workspace?.experience ?? "unknown",
+      displayClient: workspace?.displayClient ?? "unknown",
+      sizeProfile: workspace?.sizeProfile ?? "unknown",
+      status: workspace?.status ?? "unknown",
+    };
+    captureEvent("workspace_delete_requested", meta);
     setDeletingWorkspace(true);
     setActionError(null);
     try {
       await killWorkspace(deleteWorkspaceTarget.id);
+      captureEvent("workspace_delete_succeeded", {
+        ...meta,
+        latencyMs: Date.now() - startedAt,
+      });
       setDeleteWorkspaceTarget(null);
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Failed to delete workspace";
       setActionError(message);
+      captureEvent("workspace_delete_failed", {
+        ...meta,
+        errorCode: "delete_failed",
+        errorMessage: message,
+        latencyMs: Date.now() - startedAt,
+      });
     } finally {
       setDeletingWorkspace(false);
     }
@@ -370,9 +515,11 @@ export function DesktopHub() {
             <Button asChild variant="secondary">
               <Link href="/profiles">Profiles</Link>
             </Button>
+            <Button asChild variant="secondary">
+              <Link href="/sandboxes">Sandboxes</Link>
+            </Button>
             <Button
               onClick={() => setCreateDialogOpen(true)}
-              disabled={!!creatingStatus || actionId === "create"}
             >
               New VM
             </Button>
@@ -590,20 +737,17 @@ export function DesktopHub() {
             <Button
               variant="outline"
               onClick={() => setCreateDialogOpen(false)}
-              disabled={actionId === "create"}
             >
               Cancel
             </Button>
             <Button
               onClick={handleCreate}
               disabled={
-                !!creatingStatus ||
-                actionId === "create" ||
                 (newWorkspaceSnapshotSource === "user_snapshot" &&
                   !newWorkspaceSnapshotRefId)
               }
             >
-              {actionId === "create" ? <Spinner className="size-3.5" /> : "Create VM"}
+              Create VM
             </Button>
           </DialogFooter>
         </DialogContent>
