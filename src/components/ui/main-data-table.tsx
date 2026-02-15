@@ -48,6 +48,7 @@ type PageSize = 5 | 10 | 20 | 50;
 interface MainDataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
   data: TData[];
+  initialColumnVisibility?: VisibilityState;
   filterColumnId?: string;
   filterPlaceholder?: string;
   enableRowSelection?: boolean;
@@ -60,6 +61,7 @@ interface MainDataTableProps<TData, TValue> {
 export function MainDataTable<TData, TValue>({
   columns,
   data,
+  initialColumnVisibility,
   filterColumnId,
   filterPlaceholder = "Filter...",
   enableRowSelection = false,
@@ -70,7 +72,9 @@ export function MainDataTable<TData, TValue>({
 }: MainDataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
-  const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
+  const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>(
+    () => initialColumnVisibility ?? {},
+  );
   const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({});
   const [pagination, setPagination] = React.useState<PaginationState>({
     pageIndex: 0,

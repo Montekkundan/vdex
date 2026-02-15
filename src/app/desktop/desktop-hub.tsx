@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { ColumnDef } from "@tanstack/react-table";
 import { mutateWorkspaces, useSnapshots, useWorkspaces } from "@/lib/hooks/use-swr-hooks";
-import { DISPLAY_CLIENTS, EXPERIENCES, SIZE_PROFILES } from "@/lib/runtime/profiles";
+import { DISPLAY_CLIENTS, EXPERIENCES, PROVIDERS, SIZE_PROFILES } from "@/lib/runtime/profiles";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 import { slugify } from "@/lib/workspace-slug";
 import { Button } from "@/components/ui/button";
@@ -66,7 +66,6 @@ export function DesktopHub() {
   const [newWorkspaceIcon, setNewWorkspaceIcon] = useState("terminal");
   const [newWorkspaceProvider, setNewWorkspaceProvider] = useState<ProviderId>("vercel");
   const [newWorkspaceExperience, setNewWorkspaceExperience] = useState<WorkspaceExperience>("gui");
-  const [newWorkspaceDisplayClient, setNewWorkspaceDisplayClient] = useState<DisplayClient>("xpra");
   const [newWorkspaceSizeProfile, setNewWorkspaceSizeProfile] = useState<SizeProfileId>("balanced_4c8g");
   const [newWorkspaceSnapshotSource, setNewWorkspaceSnapshotSource] = useState<
     "platform_default" | "user_snapshot"
@@ -83,6 +82,9 @@ export function DesktopHub() {
   }>>([]);
   const pendingCreateSeqRef = useRef(0);
   const checkedRef = useRef<Set<string>>(new Set());
+  const lockedDisplayClient: DisplayClient =
+    newWorkspaceExperience === "gui" ? "xpra" : "none";
+
   const compatibleSnapshots = useMemo(
     () =>
       snapshots.filter(
@@ -90,26 +92,43 @@ export function DesktopHub() {
           s.status === "ready" &&
           s.provider === newWorkspaceProvider &&
           s.experience === newWorkspaceExperience &&
-          (s.displayClient ?? "none") ===
-            (newWorkspaceExperience === "cli" ? "none" : newWorkspaceDisplayClient) &&
+          (s.displayClient ?? "none") === lockedDisplayClient &&
           s.sizeProfile === newWorkspaceSizeProfile,
       ),
     [
       snapshots,
       newWorkspaceProvider,
       newWorkspaceExperience,
-      newWorkspaceDisplayClient,
+      lockedDisplayClient,
       newWorkspaceSizeProfile,
     ],
   );
 
-  const mergedWorkspaces = useMemo(
-    () => [
-      ...pendingCreates.map((entry) => entry.workspace),
-      ...workspaces,
-    ],
-    [pendingCreates, workspaces],
-  );
+  const snapshotNameById = useMemo(() => {
+    const next = new Map<string, string>();
+    for (const snapshot of snapshots) {
+      next.set(snapshot.id, snapshot.name);
+      next.set(snapshot.snapshotId, snapshot.name);
+    }
+    return next;
+  }, [snapshots]);
+
+  const mergedWorkspaces = useMemo(() => {
+    // Hide optimistic placeholders once the real server workspace row appears.
+    const visiblePending = pendingCreates
+      .filter((entry) => {
+        const pendingTs = new Date(entry.workspace.updatedAt).getTime();
+        return !workspaces.some((ws) => {
+          if (ws.name !== entry.workspace.name) return false;
+          if (ws.status !== "creating" && ws.status !== "active") return false;
+          const wsTs = new Date(ws.updatedAt).getTime();
+          return Math.abs(wsTs - pendingTs) < 2 * 60 * 1000;
+        });
+      })
+      .map((entry) => entry.workspace);
+
+    return [...visiblePending, ...workspaces];
+  }, [pendingCreates, workspaces]);
   const sorted = useMemo(
     () =>
       [...mergedWorkspaces].sort((a, b) => {
@@ -131,10 +150,12 @@ export function DesktopHub() {
                 <WorkspaceIcon name={ws.icon} size={16} />
               </div>
               <div className="min-w-0">
-                <p className="truncate text-copy-14 font-medium text-gray-1000">
+                <p className="max-w-[220px] truncate text-copy-14 font-medium text-gray-1000">
                   {ws.name}
                 </p>
-                <p className="text-copy-12 text-gray-700">{ws.id}</p>
+                <p className="max-w-[260px] truncate text-copy-12 text-gray-700">
+                  {ws.id}
+                </p>
               </div>
             </div>
           );
@@ -151,6 +172,63 @@ export function DesktopHub() {
             {row.original.status}
           </Badge>
         ),
+      },
+      {
+        accessorKey: "provider",
+        header: "Provider",
+        cell: ({ row }) => (
+          <span className="block max-w-[180px] truncate text-copy-13 text-gray-900">
+            {PROVIDERS[row.original.provider]?.label ?? row.original.provider}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "experience",
+        header: "Experience",
+        cell: ({ row }) => (
+          <span className="block max-w-[160px] truncate text-copy-13 text-gray-900">
+            {EXPERIENCES[row.original.experience]?.label ?? row.original.experience}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "displayClient",
+        header: "Display",
+        cell: ({ row }) => (
+          <span className="block max-w-[140px] truncate text-copy-13 text-gray-900">
+            {DISPLAY_CLIENTS[row.original.displayClient]?.label ??
+              row.original.displayClient}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "sizeProfile",
+        header: "Size",
+        cell: ({ row }) => (
+          <span className="block max-w-[190px] truncate text-copy-13 text-gray-900">
+            {SIZE_PROFILES[row.original.sizeProfile]?.label ??
+              row.original.sizeProfile}
+          </span>
+        ),
+      },
+      {
+        id: "snapshot",
+        header: "Snapshot",
+        cell: ({ row }) => {
+          const snapshotId = row.original.snapshotId;
+          if (!snapshotId) {
+            return <span className="text-copy-12 text-gray-700">None</span>;
+          }
+          const name = snapshotNameById.get(snapshotId);
+          return (
+            <span
+              className="block max-w-[220px] truncate text-copy-12 text-gray-900"
+              title={name ?? snapshotId}
+            >
+              {name ?? snapshotId}
+            </span>
+          );
+        },
       },
       {
         accessorKey: "updatedAt",
@@ -255,7 +333,6 @@ export function DesktopHub() {
     setNewWorkspaceIcon("terminal");
     setNewWorkspaceProvider("vercel");
     setNewWorkspaceExperience("gui");
-    setNewWorkspaceDisplayClient("xpra");
     setNewWorkspaceSizeProfile("balanced_4c8g");
     setNewWorkspaceSnapshotSource("platform_default");
     setNewWorkspaceSnapshotRefId("");
@@ -268,7 +345,7 @@ export function DesktopHub() {
       icon: newWorkspaceIcon,
       provider: newWorkspaceProvider,
       experience: newWorkspaceExperience,
-      displayClient: newWorkspaceExperience === "gui" ? newWorkspaceDisplayClient : "none",
+      displayClient: lockedDisplayClient,
       sizeProfile: newWorkspaceSizeProfile,
       snapshotSource: newWorkspaceSnapshotSource,
       snapshotRefId:
@@ -547,6 +624,12 @@ export function DesktopHub() {
               <MainDataTable
                 columns={instanceColumns}
                 data={sorted}
+                initialColumnVisibility={{
+                  provider: false,
+                  experience: false,
+                  sizeProfile: false,
+                  snapshot: false,
+                }}
                 filterColumnId="name"
                 filterPlaceholder="Filter workspaces..."
                 getRowId={(row) => row.id}
@@ -567,7 +650,7 @@ export function DesktopHub() {
           <DialogHeader>
             <DialogTitle>Create VM</DialogTitle>
             <DialogDescription>
-              Configure display client and size profile.
+              Configure VM profile and size. GUI display client is fixed to Xpra for now.
             </DialogDescription>
           </DialogHeader>
 
@@ -643,31 +726,15 @@ export function DesktopHub() {
 
             <div className="space-y-1">
               <label className="text-copy-12 text-gray-800">Display client</label>
-              <Select
-                value={newWorkspaceDisplayClient}
-                onValueChange={(value) =>
-                  setNewWorkspaceDisplayClient(value as DisplayClient)
-                }
-                disabled={newWorkspaceExperience !== "gui"}
-              >
+              <Select value={lockedDisplayClient} disabled>
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select display client" />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.values(DISPLAY_CLIENTS)
-                    .filter((client) => client.id !== "none")
-                    .map((client) => (
-                    <SelectItem
-                      key={client.id}
-                      value={client.id}
-                      disabled={!client.enabled}
-                    >
-                      {client.label}
-                      {!client.enabled && client.reason
-                        ? ` (Unavailable: ${client.reason})`
-                        : ""}
-                    </SelectItem>
-                  ))}
+                  <SelectItem value={lockedDisplayClient}>
+                    {DISPLAY_CLIENTS[lockedDisplayClient]?.label ??
+                      lockedDisplayClient}
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>

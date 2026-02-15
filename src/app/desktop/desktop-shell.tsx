@@ -408,13 +408,13 @@ export function DesktopShell({
   ]);
 
   useEffect(() => {
-    if (!(strictTargetRoute && activeWorkspaceExperience === "cli")) return;
+    if (activeWorkspaceExperience !== "cli") return;
     if (!cliActiveSandboxId) {
       setCliTerminalSettings(DEFAULT_TERMINAL_SETTINGS);
       return;
     }
     setCliTerminalSettings(loadSandboxTerminalSettings(cliActiveSandboxId));
-  }, [strictTargetRoute, activeWorkspaceExperience, cliActiveSandboxId]);
+  }, [activeWorkspaceExperience, cliActiveSandboxId]);
 
   const handleCliTerminalSettingsChange = useCallback(
     (next: TerminalSettings) => {
@@ -506,7 +506,7 @@ export function DesktopShell({
   // If no windows are persisted, auto-open a Files window as the welcome screen
   useEffect(() => {
     if (!activeWorkspaceId || !windowStateData) return;
-    if (strictTargetRoute && activeWorkspaceFromStore?.experience === "cli") {
+    if (activeWorkspaceFromStore?.experience === "cli") {
       return;
     }
     if (loadedWorkspacesRef.current.has(activeWorkspaceId)) return;
@@ -622,7 +622,7 @@ export function DesktopShell({
     );
   }
 
-  if (strictTargetRoute && activeWorkspaceExperience === "cli") {
+  if (activeWorkspaceExperience === "cli") {
     return (
       <div className="fixed inset-0 overflow-hidden bg-black">
         <div className="pointer-events-none fixed right-3 top-3 z-[9500] flex gap-2 rounded-md bg-black/40 p-2 backdrop-blur-sm">
@@ -883,7 +883,7 @@ export function DesktopShell({
           displayClient={activeWorkspaceDisplayClient}
         />
       ) : null}
-      {(activeWorkspaceExperience === "cli" || !showRemoteDisplay) && (
+      {!showRemoteDisplay && (
         <>
           <Desktop />
           <WindowRenderer />
