@@ -76,6 +76,7 @@ export function MainDataTable<TData, TValue>({
     pageIndex: 0,
     pageSize: initialPageSize,
   });
+  const lastSelectionKeyRef = React.useRef<string>("");
 
   const tableColumns = React.useMemo<ColumnDef<TData, TValue>[]>(() => {
     if (!enableRowSelection) return columns;
@@ -132,7 +133,11 @@ export function MainDataTable<TData, TValue>({
 
   React.useEffect(() => {
     if (!onSelectionChange || !enableRowSelection) return;
-    onSelectionChange(table.getSelectedRowModel().flatRows.map((row) => row.original));
+    const selectedRows = table.getSelectedRowModel().flatRows;
+    const key = selectedRows.map((row) => row.id).join("|");
+    if (lastSelectionKeyRef.current === key) return;
+    lastSelectionKeyRef.current = key;
+    onSelectionChange(selectedRows.map((row) => row.original));
   }, [enableRowSelection, onSelectionChange, rowSelection, table]);
 
   const filterColumn = filterColumnId ? table.getColumn(filterColumnId) : undefined;
