@@ -78,7 +78,7 @@ export const siteConfig = {
     socialLinks: [
       {
         icon: <Icons.github className="h-5 w-5" />,
-        url: "https://github.com/montekkundan",
+        url: "https://github.com/Montekkundan/vdex",
       },
       {
         icon: <Icons.twitter className="h-5 w-5" />,
