@@ -1011,6 +1011,7 @@ const poolStatusColors: Record<string, string> = {
 function SnapshotsTab() {
   const [data, setData] = useState<SnapshotData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [selectedRebuildJobId, setSelectedRebuildJobId] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [actionResult, setActionResult] = useState<{
     type: "success" | "error";
@@ -1092,22 +1093,29 @@ function SnapshotsTab() {
     [data?.goldenSnapshot.guiSnapshotId],
   );
 
-  const fetchData = useCallback(() => {
+  const fetchData = useCallback((jobId?: string | null) => {
     setLoading(true);
-    fetch("/api/admin/golden-snapshot")
+    const effectiveJobId = jobId ?? selectedRebuildJobId;
+    const qs = effectiveJobId
+      ? `?jobId=${encodeURIComponent(effectiveJobId)}`
+      : "";
+    fetch(`/api/admin/golden-snapshot${qs}`)
       .then((r) => {
         if (!r.ok) throw new Error("Failed to load snapshot data");
         return r.json();
       })
       .then((d) => {
+        if (effectiveJobId && !d.rebuildJob) {
+          setSelectedRebuildJobId(null);
+        }
         setData(d);
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, []);
+  }, [selectedRebuildJobId]);
 
   useEffect(() => {
-    fetchData();
+    fetchData(selectedRebuildJobId);
   }, [fetchData]);
 
   useEffect(() => {
@@ -1129,18 +1137,26 @@ function SnapshotsTab() {
       });
       const result = await r.json();
       if (!r.ok) throw new Error(result.error ?? "Action failed");
+      const actionJobId: string | null =
+        (typeof result.jobId === "string" ? result.jobId : null) ??
+        (typeof result.job?.id === "string" ? result.job.id : null);
+      if (actionJobId) {
+        setSelectedRebuildJobId(actionJobId);
+      }
       setActionResult({
         type: "success",
         message:
-          action === "rebuild_all"
-            ? "Rebuild all started. Progress will update below."
-            : action === "rebuild" || action === "rebuild_gui"
-            ? `New GUI snapshot created: ${result.snapshotId}`
-            : action === "rebuild_cli"
-              ? `New CLI snapshot created: ${result.snapshotId}`
-              : "Action completed",
+          result.alreadyRunning
+            ? "A rebuild job is already running. Showing live progress below."
+            : action === "rebuild_all"
+              ? "Rebuild all started. Progress will update below."
+              : action === "rebuild" || action === "rebuild_gui"
+                ? "GUI rebuild started. Progress will update below."
+                : action === "rebuild_cli"
+                  ? "CLI rebuild started. Progress will update below."
+                  : "Action completed",
       });
-      fetchData();
+      fetchData(actionJobId);
     } catch (e) {
       setActionResult({
         type: "error",
