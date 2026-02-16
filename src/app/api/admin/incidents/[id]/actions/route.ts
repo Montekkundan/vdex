@@ -4,7 +4,6 @@ import { getSession } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
 import { adminIncidents, workspaces } from "@/lib/db/schema";
 import { buildGoldenSnapshot } from "@/lib/sandbox/build-golden-snapshot";
-import { expireOldSnapshotVMs, prunePool, replenishPool } from "@/lib/sandbox/warm-pool";
 import { recordAdminAction } from "@/lib/admin/ops";
 
 const SAFE_ACTIONS = new Set([
@@ -12,7 +11,6 @@ const SAFE_ACTIONS = new Set([
   "restart_workspace",
   "rebuild_gui_snapshot",
   "rebuild_cli_snapshot",
-  "replenish_pool",
   "mark_resolved",
 ]);
 
@@ -43,13 +41,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         .set({ status: "resolved", updatedAt: new Date() })
         .where(eq(adminIncidents.id, id));
       result = { status: "resolved" };
-    }
-
-    if (body.actionType === "replenish_pool") {
-      await expireOldSnapshotVMs();
-      await prunePool();
-      const pool = await replenishPool();
-      result = { pool };
     }
 
     if (body.actionType === "rebuild_gui_snapshot") {

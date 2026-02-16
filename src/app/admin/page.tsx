@@ -64,6 +64,18 @@ interface AdminStats {
     id: string;
     name: string;
     status: string;
+    provider: string;
+    experience: string;
+    displayClient: string;
+    sizeProfile: string;
+    sandboxId: string | null;
+    snapshotId: string | null;
+    launchType: string | null;
+    launchLatencyMs: number | null;
+    launchErrorCode: string | null;
+    launchErrorMessage: string | null;
+    poolClaimResult: string | null;
+    poolClaimReason: string | null;
     createdAt: string;
     updatedAt: string;
     userName: string | null;
@@ -93,39 +105,6 @@ interface SnapshotData {
     cliSnapshotId: string | null;
     cliUpdatedAt: string | null;
   };
-  pool: {
-    target: number;
-    total: number;
-    available: number;
-    claimed: number;
-    expired: number;
-    matchingSnapshot: number;
-  };
-  claimStats: {
-    total: number;
-    hits: number;
-    misses: number;
-    stale: number;
-    fallback: number;
-  };
-  poolPolicies: {
-    totalPolicies: number;
-    enabledPolicies: number;
-    totalTarget: number;
-  };
-  poolLimits: {
-    maxSnapshotsPerUser: number;
-    maxPoolBucketsPerUser: number;
-    maxWarmEntriesPerUserTotal: number;
-    maxTargetPerBucket: number;
-    defaultMaxAgeMinutes: number;
-  };
-  topPoolUsers: Array<{
-    userId: string;
-    userEmail: string | null;
-    userName: string | null;
-    claims: number;
-  }>;
   recentPoolEntries: Array<{
     id: string;
     sandboxId: string;
@@ -133,10 +112,15 @@ interface SnapshotData {
     status: string;
     claimedAt: string | null;
     createdAt: string;
-    userId: string | null;
+    userId: string;
     userEmail: string | null;
     userName: string | null;
   }>;
+  launchTrace: {
+    total24h: number;
+    warmPoolHit24h: number;
+    coldBoot24h: number;
+  };
   rebuildJob: {
     id: string;
     status: "running" | "succeeded" | "failed";
@@ -798,9 +782,6 @@ function IncidentsTab() {
             {selected.kind} · {selected.occurrences} occurrences · affected users {selected.affectedUsers}
           </p>
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="secondary" disabled={!!action} onClick={() => runAction("replenish_pool")}>
-              {action === "replenish_pool" ? <Spinner size="sm" /> : "Replenish Pool"}
-            </Button>
             <Button size="sm" variant="secondary" disabled={!!action} onClick={() => runAction("rebuild_gui_snapshot")}>
               {action === "rebuild_gui_snapshot" ? <Spinner size="sm" /> : "Rebuild GUI"}
             </Button>
@@ -969,6 +950,72 @@ function WorkspacesTab({ stats }: { stats: AdminStats }) {
         ),
       },
       {
+        id: "profile",
+        header: "Profile",
+        cell: ({ row }) => (
+          <span className="text-copy-13 text-muted-foreground">
+            {row.original.provider} · {row.original.experience} · {row.original.displayClient} · {row.original.sizeProfile}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "launchType",
+        header: "Launch",
+        cell: ({ row }) => (
+          <Badge variant="outline" className="border bg-muted text-foreground">
+            {row.original.launchType ?? "--"}
+          </Badge>
+        ),
+      },
+      {
+        accessorKey: "poolClaimResult",
+        header: "Pool",
+        cell: ({ row }) => (
+          <Badge variant="outline" className="border bg-muted text-foreground">
+            {row.original.poolClaimResult ?? "--"}
+          </Badge>
+        ),
+      },
+      {
+        accessorKey: "launchLatencyMs",
+        header: "Latency",
+        cell: ({ row }) => (
+          <div className="text-copy-13 text-muted-foreground text-right tabular-nums">
+            {row.original.launchLatencyMs ? `${row.original.launchLatencyMs} ms` : "--"}
+          </div>
+        ),
+      },
+      {
+        accessorKey: "launchErrorCode",
+        header: "Error",
+        cell: ({ row }) => (
+          <span
+            className="text-copy-13 text-muted-foreground"
+            title={row.original.launchErrorMessage ?? ""}
+          >
+            {row.original.launchErrorCode ?? "--"}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "sandboxId",
+        header: "Sandbox",
+        cell: ({ row }) => (
+          <span className="text-copy-13 text-muted-foreground font-mono">
+            {row.original.sandboxId ? `${row.original.sandboxId.slice(0, 12)}...` : "--"}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "snapshotId",
+        header: "Snapshot",
+        cell: ({ row }) => (
+          <span className="text-copy-13 text-muted-foreground font-mono">
+            {row.original.snapshotId ? `${row.original.snapshotId.slice(0, 12)}...` : "--"}
+          </span>
+        ),
+      },
+      {
         accessorKey: "createdAt",
         header: "Created",
         cell: ({ row }) => (
@@ -1002,12 +1049,6 @@ function WorkspacesTab({ stats }: { stats: AdminStats }) {
   );
 }
 
-const poolStatusColors: Record<string, string> = {
-  available: "border-green-300 bg-green-100 text-green-900",
-  claimed: "border-blue-300 bg-blue-100 text-blue-900",
-  expired: "border bg-muted text-foreground",
-};
-
 function SnapshotsTab() {
   const [data, setData] = useState<SnapshotData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1024,6 +1065,8 @@ function SnapshotsTab() {
     rebuildLogLines.length > 0
       ? rebuildLogLines[rebuildLogLines.length - 1]
       : rebuildJob?.stage ?? "queued";
+  const currentlyUsedCount = data?.recentPoolEntries.filter((entry) => entry.status === "claimed").length ?? 0;
+  const everUsedCount = data?.recentPoolEntries.filter((entry) => entry.claimedAt !== null).length ?? 0;
   const poolColumns = useMemo<ColumnDef<PoolEntryRow>[]>(
     () => [
       {
@@ -1040,13 +1083,7 @@ function SnapshotsTab() {
         header: "Snapshot",
         cell: ({ row }) => (
           <span className="text-copy-13 text-muted-foreground font-mono">
-            {row.original.snapshotId === data?.goldenSnapshot.guiSnapshotId ? (
-              <Badge variant="outline" className="border-green-300 bg-green-100 text-green-900">
-                current
-              </Badge>
-            ) : (
-              <span>{row.original.snapshotId.slice(0, 12)}...</span>
-            )}
+            {row.original.snapshotId.slice(0, 12)}...
           </span>
         ),
       },
@@ -1054,20 +1091,51 @@ function SnapshotsTab() {
         accessorKey: "status",
         header: "Status",
         cell: ({ row }) => (
-          <Badge variant="outline" className={poolStatusColors[row.original.status] ?? poolStatusColors.expired}>
+          <Badge variant="outline" className="border bg-muted text-foreground">
             {row.original.status}
           </Badge>
         ),
       },
       {
         id: "owner",
-        accessorFn: (row) => row.userEmail ?? row.userName ?? "--",
+        accessorFn: (row) => row.userEmail ?? row.userName ?? row.userId,
         header: "Owner",
         cell: ({ row }) => (
           <span className="text-copy-13 text-muted-foreground">
-            {row.original.userEmail ?? row.original.userName ?? "--"}
+            {row.original.userEmail ?? row.original.userName ?? row.original.userId}
           </span>
         ),
+      },
+      {
+        id: "trace",
+        header: "Trace",
+        cell: () => (
+          <Badge variant="outline" className="border-green-300 bg-green-100 text-green-900">
+            warm_pool_policy
+          </Badge>
+        ),
+      },
+      {
+        id: "usage",
+        header: "Usage",
+        cell: ({ row }) => {
+          const currentlyUsed = row.original.status === "claimed";
+          const everUsed = !!row.original.claimedAt;
+          return (
+            <Badge
+              variant="outline"
+              className={
+                currentlyUsed
+                  ? "border-blue-300 bg-blue-100 text-blue-900"
+                  : everUsed
+                    ? "border-green-300 bg-green-100 text-green-900"
+                    : "border bg-muted text-foreground"
+              }
+            >
+              {currentlyUsed ? "currently_used" : everUsed ? "used" : "unused"}
+            </Badge>
+          );
+        },
       },
       {
         accessorKey: "createdAt",
@@ -1090,9 +1158,8 @@ function SnapshotsTab() {
         ),
       },
     ],
-    [data?.goldenSnapshot.guiSnapshotId],
+    [],
   );
-
   const fetchData = useCallback((jobId?: string | null) => {
     setLoading(true);
     const effectiveJobId = jobId ?? selectedRebuildJobId;
@@ -1116,7 +1183,7 @@ function SnapshotsTab() {
 
   useEffect(() => {
     fetchData(selectedRebuildJobId);
-  }, [fetchData]);
+  }, [fetchData, selectedRebuildJobId]);
 
   useEffect(() => {
     if (!rebuildJob || rebuildJob.status !== "running") return;
@@ -1198,7 +1265,7 @@ function SnapshotsTab() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4">
         <div className="rounded-lg border border bg-background p-5 space-y-4">
           <h3 className="text-label-14 font-medium text-foreground">
             Golden Snapshot
@@ -1234,14 +1301,6 @@ function SnapshotsTab() {
                 {data.goldenSnapshot.cliUpdatedAt
                   ? new Date(data.goldenSnapshot.cliUpdatedAt).toLocaleString()
                   : "Never"}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-copy-13 text-muted-foreground">
-                Pool VMs on GUI snapshot
-              </span>
-              <span className="text-copy-13 text-foreground tabular-nums">
-                {data.pool.matchingSnapshot}
               </span>
             </div>
           </div>
@@ -1320,107 +1379,32 @@ function SnapshotsTab() {
           ) : null}
         </div>
 
-        <div className="rounded-lg border border bg-background p-5 space-y-4">
-          <h3 className="text-label-14 font-medium text-foreground">
-            Warm Pool
-          </h3>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <p className="text-copy-13 text-muted-foreground">Available</p>
-              <p className="text-[24px] font-semibold tracking-tight text-green-700 tabular-nums">
-                {data.pool.available}
-              </p>
-            </div>
-            <div>
-              <p className="text-copy-13 text-muted-foreground">Target</p>
-              <p className="text-[24px] font-semibold tracking-tight text-foreground tabular-nums">
-                {data.pool.target}
-              </p>
-            </div>
-            <div>
-              <p className="text-copy-13 text-muted-foreground">Claimed</p>
-              <p className="text-[24px] font-semibold tracking-tight text-blue-700 tabular-nums">
-                {data.pool.claimed}
-              </p>
-            </div>
-            <div>
-              <p className="text-copy-13 text-muted-foreground">Expired</p>
-              <p className="text-[24px] font-semibold tracking-tight text-muted-foreground tabular-nums">
-                {data.pool.expired}
-              </p>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <p className="text-copy-13 text-muted-foreground">Hit</p>
-              <p className="text-copy-14 text-green-800 tabular-nums">{data.claimStats.hits}</p>
-            </div>
-            <div>
-              <p className="text-copy-13 text-muted-foreground">Miss</p>
-              <p className="text-copy-14 text-foreground tabular-nums">{data.claimStats.misses}</p>
-            </div>
-            <div>
-              <p className="text-copy-13 text-muted-foreground">Stale</p>
-              <p className="text-copy-14 text-amber-800 tabular-nums">{data.claimStats.stale}</p>
-            </div>
-            <div>
-              <p className="text-copy-13 text-muted-foreground">Fallback</p>
-              <p className="text-copy-14 text-blue-800 tabular-nums">{data.claimStats.fallback}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div className="rounded-lg border border bg-background p-5 space-y-3">
-          <h3 className="text-label-14 font-medium text-foreground">Policy Caps</h3>
-          <div className="text-copy-13 text-muted-foreground space-y-1">
-            <p>Max snapshots/user: {data.poolLimits.maxSnapshotsPerUser}</p>
-            <p>Max pool buckets/user: {data.poolLimits.maxPoolBucketsPerUser}</p>
-            <p>Max warm entries/user: {data.poolLimits.maxWarmEntriesPerUserTotal}</p>
-            <p>Max target per bucket: {data.poolLimits.maxTargetPerBucket}</p>
-            <p>Default max age (minutes): {data.poolLimits.defaultMaxAgeMinutes}</p>
-          </div>
-          <div className="text-copy-13 text-muted-foreground">
-            Policies: {data.poolPolicies.enabledPolicies}/{data.poolPolicies.totalPolicies} enabled · total target {data.poolPolicies.totalTarget}
-          </div>
-        </div>
-
-        <div className="rounded-lg border border bg-background p-5 space-y-3">
-          <h3 className="text-label-14 font-medium text-foreground">Top Pool Users</h3>
-          <div className="space-y-2">
-            {data.topPoolUsers.map((u) => (
-              <div key={u.userId} className="flex items-center justify-between text-copy-13">
-                <span className="truncate text-foreground">
-                  {u.userEmail ?? u.userName ?? u.userId}
-                </span>
-                <span className="tabular-nums text-muted-foreground">{u.claims}</span>
-              </div>
-            ))}
-            {data.topPoolUsers.length === 0 ? (
-              <p className="text-copy-13 text-muted-foreground">No claim data yet.</p>
-            ) : null}
-          </div>
-        </div>
       </div>
 
       <div className="rounded-lg border border bg-background overflow-hidden">
         <div className="px-4 py-3 border-b border bg-background">
           <h3 className="text-label-14 font-medium text-foreground">
-            Recent Pool Entries
+            Recent Pool Entries (User Policies)
           </h3>
+          <p className="mt-1 text-copy-12 text-muted-foreground">
+            24h launch trace · warm pool: {data.launchTrace.warmPoolHit24h} · cold boot: {data.launchTrace.coldBoot24h} · total: {data.launchTrace.total24h}
+          </p>
+          <p className="text-copy-12 text-muted-foreground">
+            Current usage · currently used: {currentlyUsedCount} · ever used: {everUsedCount} · listed: {data.recentPoolEntries.length}
+          </p>
         </div>
         <div className="p-4">
           <MainDataTable
             columns={poolColumns}
             data={data.recentPoolEntries}
             filterColumnId="sandboxId"
-            filterPlaceholder="Filter pool entries by sandbox..."
+            filterPlaceholder="Filter user pool entries by sandbox..."
             enableRowSelection
             getRowId={(row) => row.id}
           />
         </div>
       </div>
+
     </div>
   );
 }

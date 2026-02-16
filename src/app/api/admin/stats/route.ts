@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
-import { users, workspaces, warmPool, poolClaimEvents, userPoolPolicies } from "@/lib/db/schema";
+import {
+  users,
+  workspaces,
+  warmPool,
+  poolClaimEvents,
+  userPoolPolicies,
+  workspaceLaunchEvents,
+} from "@/lib/db/schema";
 import { eq, sql, count } from "drizzle-orm";
 import { POOL_LIMITS } from "@/lib/pools/constants";
 import { getOverviewMetrics } from "@/lib/admin/ops";
@@ -104,6 +111,54 @@ export async function GET() {
         id: workspaces.id,
         name: workspaces.name,
         status: workspaces.status,
+        provider: workspaces.provider,
+        experience: workspaces.experience,
+        displayClient: workspaces.displayClient,
+        sizeProfile: workspaces.sizeProfile,
+        sandboxId: workspaces.sandboxId,
+        snapshotId: workspaces.snapshotId,
+        launchType: sql<string | null>`(
+          select ${workspaceLaunchEvents.source}
+          from ${workspaceLaunchEvents}
+          where ${workspaceLaunchEvents.workspaceId} = ${workspaces.id}
+          order by ${workspaceLaunchEvents.createdAt} desc
+          limit 1
+        )`,
+        launchLatencyMs: sql<number | null>`(
+          select ${workspaceLaunchEvents.latencyMs}
+          from ${workspaceLaunchEvents}
+          where ${workspaceLaunchEvents.workspaceId} = ${workspaces.id}
+          order by ${workspaceLaunchEvents.createdAt} desc
+          limit 1
+        )`,
+        launchErrorCode: sql<string | null>`(
+          select ${workspaceLaunchEvents.errorCode}
+          from ${workspaceLaunchEvents}
+          where ${workspaceLaunchEvents.workspaceId} = ${workspaces.id}
+          order by ${workspaceLaunchEvents.createdAt} desc
+          limit 1
+        )`,
+        launchErrorMessage: sql<string | null>`(
+          select ${workspaceLaunchEvents.errorMessage}
+          from ${workspaceLaunchEvents}
+          where ${workspaceLaunchEvents.workspaceId} = ${workspaces.id}
+          order by ${workspaceLaunchEvents.createdAt} desc
+          limit 1
+        )`,
+        poolClaimResult: sql<string | null>`(
+          select ${poolClaimEvents.result}
+          from ${poolClaimEvents}
+          where ${poolClaimEvents.workspaceId} = ${workspaces.id}
+          order by ${poolClaimEvents.createdAt} desc
+          limit 1
+        )`,
+        poolClaimReason: sql<string | null>`(
+          select ${poolClaimEvents.reason}
+          from ${poolClaimEvents}
+          where ${poolClaimEvents.workspaceId} = ${workspaces.id}
+          order by ${poolClaimEvents.createdAt} desc
+          limit 1
+        )`,
         createdAt: workspaces.createdAt,
         updatedAt: workspaces.updatedAt,
         userName: users.name,

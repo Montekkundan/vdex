@@ -1,19 +1,14 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
-import { config, warmPool, poolClaimEvents, users, userPoolPolicies, snapshotRebuildJobs } from "@/lib/db/schema";
-import { eq, sql, count, desc } from "drizzle-orm";
+import { config, warmPool, users, snapshotRebuildJobs, workspaceLaunchEvents } from "@/lib/db/schema";
+import { eq, sql, desc, isNotNull, inArray } from "drizzle-orm";
 import {
   getGoldenSnapshotId,
 } from "@/lib/sandbox/golden-snapshot";
 import { buildGoldenSnapshot } from "@/lib/sandbox/build-golden-snapshot";
-import {
-  getWarmPoolTarget,
-  replenishPool,
-  expireOldSnapshotVMs,
-  prunePool,
-} from "@/lib/sandbox/warm-pool";
-import { POOL_LIMITS } from "@/lib/pools/constants";
+import { getSandbox } from "@/lib/sandbox/client";
+import { isLiveSandboxStatus } from "@/lib/sandbox/status";
 
 export const maxDuration = 300;
 let activeRebuildAllJobId: string | null = null;
@@ -109,17 +104,11 @@ async function runRebuildAllJob(jobId: string) {
 
     await updateRebuildJob(jobId, {
       progress: 85,
-      stage: "refreshing_pool",
+      stage: "finalizing",
       cliSnapshotId: cli.snapshotId,
     });
     await appendRebuildJobLog(jobId, `[job] CLI snapshot ready: ${cli.snapshotId}`);
-    await appendRebuildJobLog(jobId, "[job] Refreshing warm pool");
 
-    await expireOldSnapshotVMs();
-    await prunePool();
-    await replenishPool();
-
-    await appendRebuildJobLog(jobId, "[job] Warm pool refresh done");
     await updateRebuildJob(jobId, {
       status: "succeeded",
       progress: 100,
@@ -178,15 +167,10 @@ async function runSingleRebuildJob(
 
     if (!isCli) {
       await updateRebuildJob(jobId, {
-        progress: 80,
-        stage: "refreshing_pool",
+        progress: 90,
+        stage: "finalizing_gui",
         guiSnapshotId: result.snapshotId,
       });
-      await appendRebuildJobLog(jobId, "[job] Refreshing warm pool");
-      await expireOldSnapshotVMs();
-      await prunePool();
-      await replenishPool();
-      await appendRebuildJobLog(jobId, "[job] Warm pool refresh done");
     } else {
       await updateRebuildJob(jobId, {
         progress: 90,
@@ -242,56 +226,24 @@ export async function GET(req: Request) {
     .from(config)
     .where(eq(config.key, "golden_snapshot_cli_id"));
 
-  const staleThreshold = new Date(Date.now() - 15 * 60 * 1000);
-
-  const [poolStats, claimStats, policyStats, topPoolUsers, rebuildJob] = await Promise.all([
+  const [recentPoolEntries, rebuildJob, launchTraceRow] = await Promise.all([
     db
       .select({
-        total: count(),
-        available: count(
-          sql`CASE WHEN ${warmPool.status} = 'available' AND ${warmPool.createdAt} > ${staleThreshold} THEN 1 END`
-        ),
-        claimed: count(
-          sql`CASE WHEN ${warmPool.status} = 'claimed' THEN 1 END`
-        ),
-        expired: count(
-          sql`CASE WHEN ${warmPool.status} = 'expired' THEN 1 END`
-        ),
-        matchingSnapshot: count(
-          sql`CASE WHEN ${warmPool.snapshotId} = ${guiSnapshotId ?? ""} AND ${warmPool.status} = 'available' THEN 1 END`
-        ),
-      })
-      .from(warmPool),
-    db
-      .select({
-        total: count(),
-        hits: count(sql`CASE WHEN ${poolClaimEvents.result} = 'hit' THEN 1 END`),
-        misses: count(sql`CASE WHEN ${poolClaimEvents.result} = 'miss' THEN 1 END`),
-        stale: count(sql`CASE WHEN ${poolClaimEvents.result} = 'stale' THEN 1 END`),
-        fallback: count(sql`CASE WHEN ${poolClaimEvents.result} = 'fallback' THEN 1 END`),
-      })
-      .from(poolClaimEvents),
-    db
-      .select({
-        totalPolicies: count(),
-        enabledPolicies: count(
-          sql`CASE WHEN ${userPoolPolicies.enabled} = true THEN 1 END`,
-        ),
-        totalTarget: sql<number>`COALESCE(SUM(${userPoolPolicies.target}), 0)`,
-      })
-      .from(userPoolPolicies),
-    db
-      .select({
-        userId: poolClaimEvents.userId,
+        id: warmPool.id,
+        sandboxId: warmPool.sandboxId,
+        snapshotId: warmPool.snapshotId,
+        status: warmPool.status,
+        claimedAt: warmPool.claimedAt,
+        createdAt: warmPool.createdAt,
+        userId: warmPool.userId,
         userEmail: users.email,
         userName: users.name,
-        claims: count(),
       })
-      .from(poolClaimEvents)
-      .leftJoin(users, eq(poolClaimEvents.userId, users.id))
-      .groupBy(poolClaimEvents.userId, users.email, users.name)
-      .orderBy(sql`${count()} DESC`)
-      .limit(10),
+      .from(warmPool)
+      .leftJoin(users, eq(warmPool.userId, users.id))
+      .where(isNotNull(warmPool.userId))
+      .orderBy(sql`${warmPool.createdAt} DESC`)
+      .limit(20),
     (requestedJobId
       ? db
           .select()
@@ -304,24 +256,53 @@ export async function GET(req: Request) {
           .orderBy(desc(snapshotRebuildJobs.updatedAt))
           .limit(1)
     ).then((rows) => rows[0] ?? null),
+    db
+      .select({
+        total24h: sql<number>`count(*)`,
+        warmPoolHit24h: sql<number>`sum(case when ${workspaceLaunchEvents.source} = 'warm_pool_hit' then 1 else 0 end)`,
+        coldBoot24h: sql<number>`sum(case when ${workspaceLaunchEvents.source} in ('fresh', 'fallback', 'warm_pool_miss') then 1 else 0 end)`,
+      })
+      .from(workspaceLaunchEvents)
+      .where(sql`${workspaceLaunchEvents.createdAt} >= now() - interval '24 hours'`)
+      .then((rows) => rows[0] ?? null),
   ]);
 
-  const recentPoolEntries = await db
-    .select({
-      id: warmPool.id,
-      sandboxId: warmPool.sandboxId,
-      snapshotId: warmPool.snapshotId,
-      status: warmPool.status,
-      claimedAt: warmPool.claimedAt,
-      createdAt: warmPool.createdAt,
-      userId: warmPool.userId,
-      userEmail: users.email,
-      userName: users.name,
-    })
-    .from(warmPool)
-    .leftJoin(users, eq(warmPool.userId, users.id))
-    .orderBy(sql`${warmPool.createdAt} DESC`)
-    .limit(20);
+  const launchTrace = {
+    total24h: Number(launchTraceRow?.total24h ?? 0),
+    warmPoolHit24h: Number(launchTraceRow?.warmPoolHit24h ?? 0),
+    coldBoot24h: Number(launchTraceRow?.coldBoot24h ?? 0),
+  };
+
+  const livenessCandidates = recentPoolEntries.filter(
+    (entry) => entry.status === "available" || entry.status === "claimed",
+  );
+
+  const expiredIds: string[] = [];
+  await Promise.all(
+    livenessCandidates.map(async (entry) => {
+      try {
+        const sandbox = await getSandbox(entry.sandboxId);
+        if (!isLiveSandboxStatus(sandbox.status)) {
+          expiredIds.push(entry.id);
+        }
+      } catch {
+        expiredIds.push(entry.id);
+      }
+    }),
+  );
+
+  if (expiredIds.length > 0) {
+    await db
+      .update(warmPool)
+      .set({ status: "expired", claimStatus: "expired" })
+      .where(inArray(warmPool.id, expiredIds));
+  }
+
+  const recentPoolEntriesWithLiveness = recentPoolEntries.map((entry) =>
+    expiredIds.includes(entry.id)
+      ? { ...entry, status: "expired" }
+      : entry,
+  );
 
   return NextResponse.json({
     goldenSnapshot: {
@@ -330,16 +311,9 @@ export async function GET(req: Request) {
       cliSnapshotId,
       cliUpdatedAt: cliConfigRow?.updatedAt?.toISOString() ?? null,
     },
-    pool: {
-      target: getWarmPoolTarget(),
-      ...poolStats,
-    },
-    claimStats: claimStats[0],
-    poolPolicies: policyStats[0],
-    poolLimits: POOL_LIMITS,
-    topPoolUsers,
+    recentPoolEntries: recentPoolEntriesWithLiveness,
+    launchTrace,
     rebuildJob,
-    recentPoolEntries,
   });
 }
 
