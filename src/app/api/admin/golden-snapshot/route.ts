@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
 import { config, warmPool, users, snapshotRebuildJobs, workspaceLaunchEvents } from "@/lib/db/schema";
-import { eq, sql, desc, isNotNull, inArray } from "drizzle-orm";
+import { eq, sql, desc, isNotNull, inArray, and } from "drizzle-orm";
 import {
   getGoldenSnapshotId,
 } from "@/lib/sandbox/golden-snapshot";
@@ -60,6 +60,33 @@ async function updateRebuildJob(
     .where(eq(snapshotRebuildJobs.id, jobId));
 }
 
+async function updateRunningRebuildJob(
+  jobId: string,
+  patch: Partial<{
+    status: "running" | "succeeded" | "failed";
+    progress: number;
+    stage: string;
+    message: string | null;
+    guiSnapshotId: string | null;
+    cliSnapshotId: string | null;
+    error: string | null;
+    finishedAt: Date | null;
+  }>,
+) {
+  await db
+    .update(snapshotRebuildJobs)
+    .set({
+      ...patch,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(snapshotRebuildJobs.id, jobId),
+        eq(snapshotRebuildJobs.status, "running"),
+      ),
+    );
+}
+
 async function appendRebuildJobLog(jobId: string, line: string) {
   await db
     .update(snapshotRebuildJobs)
@@ -70,59 +97,92 @@ async function appendRebuildJobLog(jobId: string, line: string) {
     .where(eq(snapshotRebuildJobs.id, jobId));
 }
 
+async function appendRunningRebuildJobLog(jobId: string, line: string) {
+  await db
+    .update(snapshotRebuildJobs)
+    .set({
+      message: sql`right(coalesce(${snapshotRebuildJobs.message}, '') || ${line} || E'\n', 60000)`,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(snapshotRebuildJobs.id, jobId),
+        eq(snapshotRebuildJobs.status, "running"),
+      ),
+    );
+}
+
+async function isRebuildJobRunning(jobId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ status: snapshotRebuildJobs.status })
+    .from(snapshotRebuildJobs)
+    .where(eq(snapshotRebuildJobs.id, jobId))
+    .limit(1);
+
+  return row?.status === "running";
+}
+
 async function runRebuildAllJob(jobId: string) {
   try {
-    await appendRebuildJobLog(jobId, "[job] Rebuild all started");
-    await updateRebuildJob(jobId, {
+    await appendRunningRebuildJobLog(jobId, "[job] Rebuild all started");
+    await updateRunningRebuildJob(jobId, {
       status: "running",
       progress: 10,
       stage: "rebuilding_gui",
     });
-    await appendRebuildJobLog(jobId, "[job] Rebuilding GUI snapshot");
+    await appendRunningRebuildJobLog(jobId, "[job] Rebuilding GUI snapshot");
 
     const gui = await buildGoldenSnapshot({
       logPrefix: "admin:golden-snapshot:gui",
       experience: "gui",
       persistAsPlatformDefault: true,
-      onLog: async (line) => appendRebuildJobLog(jobId, line),
+      onLog: async (line) => appendRunningRebuildJobLog(jobId, line),
     });
 
-    await updateRebuildJob(jobId, {
+    if (!(await isRebuildJobRunning(jobId))) {
+      return;
+    }
+
+    await updateRunningRebuildJob(jobId, {
       progress: 55,
       stage: "rebuilding_cli",
       guiSnapshotId: gui.snapshotId,
     });
-    await appendRebuildJobLog(jobId, `[job] GUI snapshot ready: ${gui.snapshotId}`);
-    await appendRebuildJobLog(jobId, "[job] Rebuilding CLI snapshot");
+    await appendRunningRebuildJobLog(jobId, `[job] GUI snapshot ready: ${gui.snapshotId}`);
+    await appendRunningRebuildJobLog(jobId, "[job] Rebuilding CLI snapshot");
 
     const cli = await buildGoldenSnapshot({
       logPrefix: "admin:golden-snapshot:cli",
       experience: "cli",
       persistAsPlatformDefault: true,
-      onLog: async (line) => appendRebuildJobLog(jobId, line),
+      onLog: async (line) => appendRunningRebuildJobLog(jobId, line),
     });
 
-    await updateRebuildJob(jobId, {
+    if (!(await isRebuildJobRunning(jobId))) {
+      return;
+    }
+
+    await updateRunningRebuildJob(jobId, {
       progress: 85,
       stage: "finalizing",
       cliSnapshotId: cli.snapshotId,
     });
-    await appendRebuildJobLog(jobId, `[job] CLI snapshot ready: ${cli.snapshotId}`);
+    await appendRunningRebuildJobLog(jobId, `[job] CLI snapshot ready: ${cli.snapshotId}`);
 
-    await updateRebuildJob(jobId, {
+    await updateRunningRebuildJob(jobId, {
       status: "succeeded",
       progress: 100,
       stage: "completed",
       finishedAt: new Date(),
     });
-    await appendRebuildJobLog(jobId, "[job] Rebuild all completed");
+    await appendRunningRebuildJobLog(jobId, "[job] Rebuild all completed");
   } catch (err) {
     const errorMessage = formatRebuildError(err);
-    await appendRebuildJobLog(
+    await appendRunningRebuildJobLog(
       jobId,
       `[job] Rebuild all failed: ${errorMessage}`,
     );
-    await updateRebuildJob(jobId, {
+    await updateRunningRebuildJob(jobId, {
       status: "failed",
       progress: 100,
       stage: "failed",
@@ -146,13 +206,13 @@ async function runSingleRebuildJob(
     : "admin:golden-snapshot:gui";
 
   try {
-    await appendRebuildJobLog(jobId, `[job] Rebuild ${label} started`);
-    await updateRebuildJob(jobId, {
+    await appendRunningRebuildJobLog(jobId, `[job] Rebuild ${label} started`);
+    await updateRunningRebuildJob(jobId, {
       status: "running",
       progress: 10,
       stage: `rebuilding_${label}`,
     });
-    await appendRebuildJobLog(
+    await appendRunningRebuildJobLog(
       jobId,
       `[job] Rebuilding ${label.toUpperCase()} snapshot`,
     );
@@ -162,24 +222,28 @@ async function runSingleRebuildJob(
       logPrefix,
       experience,
       persistAsPlatformDefault: true,
-      onLog: async (line) => appendRebuildJobLog(jobId, line),
+      onLog: async (line) => appendRunningRebuildJobLog(jobId, line),
     });
 
+    if (!(await isRebuildJobRunning(jobId))) {
+      return;
+    }
+
     if (!isCli) {
-      await updateRebuildJob(jobId, {
+      await updateRunningRebuildJob(jobId, {
         progress: 90,
         stage: "finalizing_gui",
         guiSnapshotId: result.snapshotId,
       });
     } else {
-      await updateRebuildJob(jobId, {
+      await updateRunningRebuildJob(jobId, {
         progress: 90,
         stage: "finalizing_cli",
         cliSnapshotId: result.snapshotId,
       });
     }
 
-    await updateRebuildJob(jobId, {
+    await updateRunningRebuildJob(jobId, {
       status: "succeeded",
       progress: 100,
       stage: "completed",
@@ -187,14 +251,14 @@ async function runSingleRebuildJob(
       cliSnapshotId: isCli ? result.snapshotId : null,
       finishedAt: new Date(),
     });
-    await appendRebuildJobLog(jobId, `[job] Rebuild ${label} completed`);
+    await appendRunningRebuildJobLog(jobId, `[job] Rebuild ${label} completed`);
   } catch (err) {
     const errorMessage = formatRebuildError(err);
-    await appendRebuildJobLog(
+    await appendRunningRebuildJobLog(
       jobId,
       `[job] Rebuild ${label} failed: ${errorMessage}`,
     );
-    await updateRebuildJob(jobId, {
+    await updateRunningRebuildJob(jobId, {
       status: "failed",
       progress: 100,
       stage: "failed",
@@ -325,6 +389,53 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => ({}));
   const action = body.action as string;
+
+  if (action === "stop_rebuild") {
+    const requestedJobId = typeof body.jobId === "string" ? body.jobId : null;
+
+    const [runningJob] = requestedJobId
+      ? await db
+          .select()
+          .from(snapshotRebuildJobs)
+          .where(
+            and(
+              eq(snapshotRebuildJobs.id, requestedJobId),
+              eq(snapshotRebuildJobs.status, "running"),
+            ),
+          )
+          .limit(1)
+      : await db
+          .select()
+          .from(snapshotRebuildJobs)
+          .where(eq(snapshotRebuildJobs.status, "running"))
+          .orderBy(desc(snapshotRebuildJobs.updatedAt))
+          .limit(1);
+
+    if (!runningJob) {
+      return NextResponse.json({ error: "No running rebuild job found" }, { status: 404 });
+    }
+
+    await appendRebuildJobLog(runningJob.id, "[job] Stop requested by admin");
+    await updateRebuildJob(runningJob.id, {
+      status: "failed",
+      stage: "stopped_by_admin",
+      error: "Stopped by admin",
+      finishedAt: new Date(),
+    });
+    await appendRebuildJobLog(runningJob.id, "[job] Rebuild stopped by admin");
+
+    if (activeRebuildAllJobId === runningJob.id) {
+      activeRebuildAllJobId = null;
+    }
+
+    const [updatedJob] = await db
+      .select()
+      .from(snapshotRebuildJobs)
+      .where(eq(snapshotRebuildJobs.id, runningJob.id))
+      .limit(1);
+
+    return NextResponse.json({ ok: true, stopped: true, job: updatedJob, jobId: runningJob.id }, { status: 200 });
+  }
 
   if (action === "rebuild" || action === "rebuild_gui" || action === "rebuild_cli") {
     const isCli = action === "rebuild_cli";

@@ -154,6 +154,8 @@ const roleColors: Record<string, string> = {
   guest: "border bg-muted text-foreground",
 };
 
+const REBUILD_STALE_THRESHOLD_MS = 5 * 60 * 1000;
+
 function StatCard({
   title,
   value,
@@ -1065,6 +1067,16 @@ function SnapshotsTab() {
     rebuildLogLines.length > 0
       ? rebuildLogLines[rebuildLogLines.length - 1]
       : rebuildJob?.stage ?? "queued";
+  const rebuildUpdatedAtMs = rebuildJob
+    ? new Date(rebuildJob.updatedAt).getTime()
+    : null;
+  const staleElapsedMs =
+    rebuildJob?.status === "running" && rebuildUpdatedAtMs
+      ? Date.now() - rebuildUpdatedAtMs
+      : 0;
+  const isRebuildLikelyStalled =
+    rebuildJob?.status === "running" && staleElapsedMs >= REBUILD_STALE_THRESHOLD_MS;
+  const staleElapsedMinutes = Math.floor(staleElapsedMs / 60000);
   const currentlyUsedCount = data?.recentPoolEntries.filter((entry) => entry.status === "claimed").length ?? 0;
   const everUsedCount = data?.recentPoolEntries.filter((entry) => entry.claimedAt !== null).length ?? 0;
   const poolColumns = useMemo<ColumnDef<PoolEntryRow>[]>(
@@ -1200,7 +1212,10 @@ function SnapshotsTab() {
       const r = await fetch("/api/admin/golden-snapshot", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({
+          action,
+          jobId: selectedRebuildJobId ?? data?.rebuildJob?.id ?? null,
+        }),
       });
       const result = await r.json();
       if (!r.ok) throw new Error(result.error ?? "Action failed");
@@ -1215,6 +1230,8 @@ function SnapshotsTab() {
         message:
           result.alreadyRunning
             ? "A rebuild job is already running. Showing live progress below."
+            : action === "stop_rebuild"
+              ? "Rebuild stopped. You can start it again."
             : action === "rebuild_all"
               ? "Rebuild all started. Progress will update below."
               : action === "rebuild" || action === "rebuild_gui"
@@ -1329,6 +1346,14 @@ function SnapshotsTab() {
             >
               {actionLoading === "rebuild_cli" ? <Spinner size="sm" /> : "Rebuild CLI"}
             </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={actionLoading !== null || data.rebuildJob?.status !== "running"}
+              onClick={() => runAction("stop_rebuild")}
+            >
+              {actionLoading === "stop_rebuild" ? <Spinner size="sm" /> : "Stop"}
+            </Button>
           </div>
           {(actionLoading === "rebuild_gui" || actionLoading === "rebuild_cli") && (
             <p className="text-copy-13 text-amber-700">
@@ -1337,6 +1362,11 @@ function SnapshotsTab() {
           )}
           {data.rebuildJob ? (
             <div className="space-y-2 rounded-md border border p-3">
+              {isRebuildLikelyStalled ? (
+                <div className="rounded-md border border-amber-300 bg-amber-100 px-3 py-2 text-copy-12 text-amber-900">
+                  No rebuild updates for {Math.max(1, staleElapsedMinutes)} min. This job may be stuck in provider build/setup. Use Stop and start again.
+                </div>
+              ) : null}
               <div className="flex items-center justify-between text-copy-13">
                 <span className="text-muted-foreground">
                   {rebuildLastLine}
