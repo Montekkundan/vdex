@@ -341,6 +341,12 @@
         animation: orbit calc(var(--duration) * 1s) linear infinite;
     }
 
+    @media (prefers-reduced-motion: reduce) {
+        .animate-orbit {
+            animation: none;
+        }
+    }
+
     .material-medium {
         @apply border border-gray-alpha-200 bg-background-100/80 shadow-sm backdrop-blur-md;
     }

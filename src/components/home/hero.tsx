@@ -6,33 +6,48 @@ import { buttonVariants } from "@/components/ui/button";
 import PyramidAnimation from "@/components/home/ascii-triangle";
 import { siteConfig } from "@/lib/config";
 import { cn } from "@/lib/utils";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import Link from "next/link";
 
-const ease: [number, number, number, number] = [0.16, 1, 0.3, 1];
+const EASE_OUT: [number, number, number, number] = [0.215, 0.61, 0.355, 1];
+const INTRO_DURATION = 0.45;
+const UI_DURATION = 0.2;
 
 function HeroTitles() {
+  const shouldReduceMotion = useReducedMotion();
+
   return (
     <div className="flex w-full max-w-3xl flex-col overflow-hidden pt-8">
       <motion.h1
         className="text-left text-4xl font-semibold leading-tighter text-foreground sm:text-5xl md:text-6xl tracking-tighter"
-        initial={{ filter: "blur(10px)", opacity: 0, y: 50 }}
-        animate={{ filter: "blur(0px)", opacity: 1, y: 0 }}
-        transition={{
-          duration: 1,
-          ease,
-          staggerChildren: 0.2,
-        }}
+        initial={
+          shouldReduceMotion
+            ? false
+            : { opacity: 0, y: 24, scale: 0.98 }
+        }
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={
+          shouldReduceMotion
+            ? undefined
+            : {
+                duration: INTRO_DURATION,
+                ease: EASE_OUT,
+              }
+        }
       >
         <motion.span
           className="inline-block text-balance"
-          initial={{ opacity: 0, y: 20 }}
+          initial={shouldReduceMotion ? false : { opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{
-            duration: 0.8,
-            delay: 0.5,
-            ease,
-          }}
+          transition={
+            shouldReduceMotion
+              ? undefined
+              : {
+                  duration: UI_DURATION,
+                  delay: 0.06,
+                  ease: EASE_OUT,
+                }
+          }
         >
           <span className="leading-normal font-bold">
             {siteConfig.hero.title}
@@ -41,13 +56,17 @@ function HeroTitles() {
       </motion.h1>
       <motion.p
         className="text-left max-w-xl leading-normal text-muted-foreground sm:text-lg sm:leading-normal text-balance"
-        initial={{ opacity: 0, y: 20 }}
+        initial={shouldReduceMotion ? false : { opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{
-          delay: 0.6,
-          duration: 0.8,
-          ease,
-        }}
+        transition={
+          shouldReduceMotion
+            ? undefined
+            : {
+                delay: 0.1,
+                duration: UI_DURATION,
+                ease: EASE_OUT,
+              }
+        }
       >
         {siteConfig.hero.description}
       </motion.p>
@@ -56,6 +75,7 @@ function HeroTitles() {
 }
 
 function HeroCTA({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
+  const shouldReduceMotion = useReducedMotion();
   const ctaHref = isLoggedIn ? "/desktop" : "/api/auth/vercel";
   const ctaLabel = isLoggedIn ? "Get Started" : "Login with Vercel";
   const ctaDescription = isLoggedIn
@@ -66,9 +86,13 @@ function HeroCTA({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
     <div className="relative mt-6">
       <motion.div
         className="flex w-full max-w-2xl flex-col items-start justify-start space-y-4 sm:flex-row sm:space-x-4 sm:space-y-0"
-        initial={{ opacity: 0, y: 20 }}
+        initial={shouldReduceMotion ? false : { opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.8, duration: 0.8, ease }}
+        transition={
+          shouldReduceMotion
+            ? undefined
+            : { delay: 0.14, duration: UI_DURATION, ease: EASE_OUT }
+        }
       >
         <Link
           href={ctaHref}
@@ -83,9 +107,13 @@ function HeroCTA({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
       </motion.div>
       <motion.p
         className="mt-3 text-sm text-muted-foreground text-left"
-        initial={{ opacity: 0 }}
+        initial={shouldReduceMotion ? false : { opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ delay: 1.0, duration: 0.8 }}
+        transition={
+          shouldReduceMotion
+            ? undefined
+            : { delay: 0.2, duration: 0.18, ease: EASE_OUT }
+        }
       >
         {ctaDescription}
       </motion.p>
@@ -93,6 +121,8 @@ function HeroCTA({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
   );
 }
 export function Hero({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
+  const shouldReduceMotion = useReducedMotion();
+
   return (
     <Section id="hero">
       <div className="relative grid grid-cols-1 lg:grid-cols-2 gap-x-8 w-full p-6 lg:p-12 border-x border-t mt-8 overflow-hidden border-dashed">
@@ -111,9 +141,13 @@ export function Hero({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
         </div>
         <div className="hidden lg:flex relative lg:h-full lg:col-span-1 items-center justify-center">
           <motion.div
-            initial={{ opacity: 0 }}
+            initial={shouldReduceMotion ? false : { opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ duration: 0.8, delay: 0.3 }}
+            transition={
+              shouldReduceMotion
+                ? undefined
+                : { duration: 0.25, delay: 0.12, ease: EASE_OUT }
+            }
             className="w-full max-w-[520px] overflow-hidden px-4"
           >
             <PyramidAnimation

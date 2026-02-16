@@ -3,7 +3,7 @@
 import { Icons } from "@/components/icons";
 import { Section } from "@/components/section";
 import OrbitingCircles from "@/components/ui/orbiting-circles";
-import { cubicBezier, motion } from "framer-motion";
+import { cubicBezier, motion, useReducedMotion } from "framer-motion";
 import {
   AlertTriangleIcon,
   BrainCircuitIcon,
@@ -22,18 +22,17 @@ const containerVariants = {
     },
   },
 };
-const LINEAR_EASE: [number, number, number, number] = [0, 0, 1, 1];
-const EASE_IN_OUT: [number, number, number, number] = [0.42, 0, 0.58, 1];
+const EASE_OUT: [number, number, number, number] = [0.215, 0.61, 0.355, 1];
 const SECTION_EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
-export function Card1() {
+export function Card1({ shouldReduceMotion }: { shouldReduceMotion: boolean }) {
   const variant1 = {
     initial: {
       scale: 0.87,
       transition: {
-        delay: 0.05,
-        duration: 0.2,
-        ease: LINEAR_EASE,
+        delay: 0.02,
+        duration: 0.18,
+        ease: EASE_OUT,
       },
     },
     whileHover: {
@@ -41,9 +40,9 @@ export function Card1() {
       boxShadow:
         "rgba(245,40,145,0.35) 0px 20px 70px -10px, rgba(36,42,66,0.04) 0px 10px 24px -8px, rgba(36,42,66,0.06) 0px 1px 4px -1px",
       transition: {
-        delay: 0.05,
-        duration: 0.2,
-        ease: LINEAR_EASE,
+        delay: 0.02,
+        duration: 0.18,
+        ease: EASE_OUT,
       },
     },
   };
@@ -53,8 +52,8 @@ export function Card1() {
       scale: 0.95,
       transition: {
         delay: 0,
-        duration: 0.2,
-        ease: LINEAR_EASE,
+        duration: 0.18,
+        ease: EASE_OUT,
       },
     },
     whileHover: {
@@ -64,8 +63,8 @@ export function Card1() {
         "rgba(39,127,245,0.15) 0px 20px 70px -10px, rgba(36,42,66,0.04) 0px 10px 24px -8px, rgba(36,42,66,0.06) 0px 1px 4px -1px",
       transition: {
         delay: 0,
-        duration: 0.2,
-        ease: LINEAR_EASE,
+        duration: 0.18,
+        ease: EASE_OUT,
       },
     },
   };
@@ -75,9 +74,9 @@ export function Card1() {
       opacity: 0,
       scale: 1,
       transition: {
-        delay: 0.05,
-        duration: 0.2,
-        ease: LINEAR_EASE,
+        delay: 0.02,
+        duration: 0.18,
+        ease: EASE_OUT,
       },
     },
     whileHover: {
@@ -87,9 +86,9 @@ export function Card1() {
       boxShadow:
         "rgba(39,245,76,0.15) 10px 20px 70px -20px, rgba(36,42,66,0.04) 0px 10px 24px -8px, rgba(36,42,66,0.06) 0px 1px 4px -1px",
       transition: {
-        delay: 0.05,
-        duration: 0.2,
-        ease: EASE_IN_OUT,
+        delay: 0.02,
+        duration: 0.18,
+        ease: EASE_OUT,
       },
     },
   };
@@ -105,16 +104,20 @@ export function Card1() {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 24 }}
-      whileInView={{ opacity: 1, y: 0 }}
+      initial={shouldReduceMotion ? false : { opacity: 0, y: 20 }}
+      whileInView={shouldReduceMotion ? undefined : { opacity: 1, y: 0 }}
       viewport={{ once: true, amount: 0.2 }}
-      transition={{ duration: 0.8, ease: SECTION_EASE }}
+      transition={
+        shouldReduceMotion
+          ? undefined
+          : { duration: 0.22, ease: SECTION_EASE }
+      }
       className="p-0 h-full overflow-hidden border-b lg:border-b-0 lg:border-r border-dashed"
     >
       <motion.div
         variants={containerVariants}
         initial="initial"
-        whileHover="whileHover"
+        whileHover={shouldReduceMotion ? undefined : "whileHover"}
         className="flex flex-col gap-y-5 items-center justify-between h-full w-full cursor-pointer"
       >
         <div className="flex h-full w-full items-center justify-center rounded-none border-b border-dashed">
@@ -182,7 +185,7 @@ export function Card1() {
   );
 }
 
-const Card2 = () => {
+const Card2 = ({ shouldReduceMotion }: { shouldReduceMotion: boolean }) => {
   const logs = [
     {
       id: 1,
@@ -242,16 +245,20 @@ const Card2 = () => {
   ];
   return (
     <motion.div
-      initial={{ opacity: 0, y: 24 }}
-      whileInView={{ opacity: 1, y: 0 }}
+      initial={shouldReduceMotion ? false : { opacity: 0, y: 20 }}
+      whileInView={shouldReduceMotion ? undefined : { opacity: 1, y: 0 }}
       viewport={{ once: true, amount: 0.2 }}
-      transition={{ duration: 0.8, ease: SECTION_EASE, delay: 0.08 }}
+      transition={
+        shouldReduceMotion
+          ? undefined
+          : { duration: 0.22, ease: SECTION_EASE, delay: 0.04 }
+      }
       className="p-0 h-full overflow-hidden border-b lg:border-b-0 lg:border-r border-dashed"
     >
       <motion.div
         variants={containerVariants}
         initial="initial"
-        whileHover="whileHover"
+        whileHover={shouldReduceMotion ? undefined : "whileHover"}
         className="flex flex-col gap-y-5 items-center justify-between h-full w-full cursor-pointer"
       >
         <div className="border-b items-center justify-center overflow-hidden bg-transparent rounded-none h-4/5 w-full flex border-dashed">
@@ -313,13 +320,17 @@ const Card2 = () => {
   );
 };
 
-const Card3 = () => {
+const Card3 = ({ shouldReduceMotion }: { shouldReduceMotion: boolean }) => {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 24 }}
-      whileInView={{ opacity: 1, y: 0 }}
+      initial={shouldReduceMotion ? false : { opacity: 0, y: 20 }}
+      whileInView={shouldReduceMotion ? undefined : { opacity: 1, y: 0 }}
       viewport={{ once: true, amount: 0.2 }}
-      transition={{ duration: 0.8, ease: SECTION_EASE, delay: 0.16 }}
+      transition={
+        shouldReduceMotion
+          ? undefined
+          : { duration: 0.22, ease: SECTION_EASE, delay: 0.08 }
+      }
       className="p-0 min-h-[500px] lg:min-h-fit overflow-hidden border-b lg:border-b-0 -z-0 border-dashed"
     >
       <div className="relative flex flex-col gap-y-5 items-center justify-between h-full w-full">
@@ -367,12 +378,14 @@ const Card3 = () => {
 };
 
 export function UseCases() {
+  const shouldReduceMotion = useReducedMotion();
+
   return (
     <Section id="use-cases" title="Use Cases">
       <div className="grid lg:grid-cols-3 h-full border border-b border-dashed">
-        <Card1 />
-        <Card2 />
-        <Card3 />
+        <Card1 shouldReduceMotion={shouldReduceMotion} />
+        <Card2 shouldReduceMotion={shouldReduceMotion} />
+        <Card3 shouldReduceMotion={shouldReduceMotion} />
       </div>
     </Section>
   );
