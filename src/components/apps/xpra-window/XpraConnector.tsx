@@ -74,16 +74,35 @@ export function XpraConnector() {
       if (win.overrideRedirect) return;
       currentWids.add(win.wid);
 
+      const appId = `xpra:${win.wid}`;
+      const state = useWindowStore.getState();
+      const existing = state
+        .getWindows()
+        .filter((w) => w.appId === appId);
+
+      if (existing.length > 1) {
+        const keeper = existing.reduce((best, next) =>
+          next.zIndex > best.zIndex ? next : best,
+        );
+        for (const duplicate of existing) {
+          if (duplicate.id !== keeper.id) {
+            closeWindow(duplicate.id);
+          }
+        }
+      }
+
       if (!trackedWidsRef.current.has(win.wid)) {
         trackedWidsRef.current.add(win.wid);
-        openWindow({
-          title: win.title,
-          appId: `xpra:${win.wid}`,
-          width: Math.max(100, win.width),
-          height: Math.max(100, win.height),
-          x: win.x,
-          y: win.y,
-        });
+        if (existing.length === 0) {
+          openWindow({
+            title: win.title,
+            appId,
+            width: Math.max(100, win.width),
+            height: Math.max(100, win.height),
+            x: win.x,
+            y: win.y,
+          });
+        }
       }
     });
 
@@ -148,7 +167,9 @@ export function XpraConnector() {
         const stillExists = current.some((w) => w.id === prevWin.id);
         if (!stillExists) {
           const wid = parseInt(prevWin.appId.split(":")[1], 10);
+          const hasSiblingShell = current.some((w) => w.appId === prevWin.appId);
           if (!isNaN(wid) && trackedWidsRef.current.has(wid)) {
+            if (hasSiblingShell) continue;
             trackedWidsRef.current.delete(wid);
             xpraCloseWindow(wid);
           }

@@ -105,7 +105,7 @@ function WorkspaceStatusToast() {
   }
 
   return (
-    <div className="fixed bottom-14 left-1/2 z-[9999] -translate-x-1/2 animate-in fade-in slide-in-from-bottom-2">
+    <div className="fixed bottom-14 left-1/2 z-9999 -translate-x-1/2 animate-in fade-in slide-in-from-bottom-2">
       <div
         className={`flex items-center gap-3 rounded-xl border px-5 py-3 backdrop-blur-md ${isError ? "border-red-500/30" : "border-gray-alpha-200"}`}
         style={{
@@ -344,6 +344,10 @@ export function DesktopShell({
   const [cliSettingsVersion, setCliSettingsVersion] = useState(0);
   const cliActiveSandboxId =
     activeWorkspaceId ? sandboxes[activeWorkspaceId]?.sandboxId ?? null : null;
+  const cliPreviewUrl = activeSandbox?.domains?.preview
+    ? `https://${activeSandbox.domains.preview}`
+    : null;
+  const cliPreviewHost = cliPreviewUrl ? activeSandbox?.domains?.preview : null;
   const cliTerminalSettings = useMemo<TerminalSettings>(() => {
     // Force refresh after explicit save/reset operations.
     void cliSettingsVersion;
@@ -628,7 +632,7 @@ export function DesktopShell({
   if (activeWorkspaceExperience === "cli") {
     return (
       <div className="fixed inset-0 overflow-hidden bg-black">
-        <div className="pointer-events-none fixed right-3 top-3 z-[9500] flex gap-2 rounded-md bg-black/40 p-2 backdrop-blur-sm">
+        <div className="pointer-events-none fixed right-3 top-3 z-9500 flex gap-2 rounded-md bg-black/40 p-2 backdrop-blur-sm">
           <Button
             size="sm"
             variant="secondary"
@@ -757,6 +761,8 @@ export function DesktopShell({
           settings={cliTerminalSettings}
           onChange={handleCliTerminalSettingsChange}
           onReset={handleCliTerminalSettingsReset}
+          previewUrl={cliPreviewUrl}
+          previewHost={cliPreviewHost}
         />
         <WorkspaceStatusToast />
       </div>
@@ -765,27 +771,6 @@ export function DesktopShell({
 
   return (
     <div className="h-screen w-screen overflow-hidden">
-      {strictTargetRoute && (
-        <div className="pointer-events-none fixed left-3 top-3 z-[9500] flex gap-2">
-          <Button
-            size="sm"
-            variant="secondary"
-            className="pointer-events-auto"
-            onClick={() => router.push("/desktop")}
-          >
-            Back to Workspaces
-          </Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            className="pointer-events-auto"
-            disabled={!activeWorkspaceId || returningToHub}
-            onClick={() => setShutdownDialogOpen(true)}
-          >
-            {returningToHub ? <Spinner className="size-3.5" /> : "Shutdown VM"}
-          </Button>
-        </div>
-      )}
       <AlertDialog
         open={shutdownDialogOpen}
         onOpenChange={(open) => {
@@ -890,7 +875,16 @@ export function DesktopShell({
         <>
           <Desktop />
           <WindowRenderer />
-          <Taskbar launcherToggle={launcherToggle} />
+          <Taskbar
+            launcherToggle={launcherToggle}
+            onBackToWorkspaces={
+              strictTargetRoute ? () => router.push("/desktop") : undefined
+            }
+            onShutdownVm={
+              strictTargetRoute ? () => setShutdownDialogOpen(true) : undefined
+            }
+            disableShutdown={!activeWorkspaceId || returningToHub}
+          />
         </>
       )}
       <NotificationToasts />

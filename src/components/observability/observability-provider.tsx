@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { Suspense, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import {
   captureException,
@@ -11,9 +11,18 @@ import {
 } from "@/lib/observability/client";
 import { ObservabilityErrorBoundary } from "@/components/observability/error-boundary";
 
-export function ObservabilityProvider({ children }: { children: React.ReactNode }) {
+function ObservabilityRouteTracker() {
   const pathname = usePathname();
 
+  useEffect(() => {
+    if (!pathname) return;
+    updateReplayForPath(pathname);
+  }, [pathname]);
+
+  return null;
+}
+
+export function ObservabilityProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     initObservabilityClient();
 
@@ -59,10 +68,12 @@ export function ObservabilityProvider({ children }: { children: React.ReactNode 
     };
   }, []);
 
-  useEffect(() => {
-    if (!pathname) return;
-    updateReplayForPath(pathname);
-  }, [pathname]);
-
-  return <ObservabilityErrorBoundary>{children}</ObservabilityErrorBoundary>;
+  return (
+    <ObservabilityErrorBoundary>
+      {children}
+      <Suspense fallback={null}>
+        <ObservabilityRouteTracker />
+      </Suspense>
+    </ObservabilityErrorBoundary>
+  );
 }

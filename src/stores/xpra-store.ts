@@ -420,7 +420,7 @@ export const useXpraStore = create<XpraStore>()((set, get) => ({
             keyboard: true,
             mouse: true,
             audio: false,
-            video: false,
+            video: true,
             printing: false,
             fileTransfer: true,
             notifications: true,

@@ -33,6 +33,8 @@ interface TerminalSettingsDialogProps {
   settings: TerminalSettings;
   onChange: (settings: TerminalSettings) => void;
   onReset: () => void;
+  previewUrl?: string | null;
+  previewHost?: string | null;
 }
 
 export function TerminalSettingsDialog({
@@ -41,6 +43,8 @@ export function TerminalSettingsDialog({
   settings,
   onChange,
   onReset,
+  previewUrl,
+  previewHost,
 }: TerminalSettingsDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -210,6 +214,26 @@ export function TerminalSettingsDialog({
                 }
               />
             </div>
+          </div>
+
+          <div className="grid gap-1.5">
+            <Label>Preview URL</Label>
+            <Button
+              asChild
+              type="button"
+              variant="outline"
+              className="w-full justify-start"
+              disabled={!previewUrl}
+            >
+              <a
+                href={previewUrl ?? undefined}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={previewUrl ?? "Preview URL unavailable"}
+              >
+                {previewHost ? `Preview: ${previewHost}` : "Preview unavailable"}
+              </a>
+            </Button>
           </div>
         </div>
 

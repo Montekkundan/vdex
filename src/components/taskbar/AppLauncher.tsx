@@ -11,12 +11,22 @@ import {
   CommandGroup,
   CommandSeparator,
 } from "@/components/ui/command";
-import { LayoutGrid } from "lucide-react";
+import { LayoutGrid, LogOut, Power } from "lucide-react";
 import { AppIcon } from "@/components/app-icon";
 import { useLaunchApp, getAppId } from "@/lib/hooks/use-launch-app";
 import type { DesktopEntry } from "@/types/desktop-entry";
 
-export function AppLauncher({ externalToggle }: { externalToggle?: number }) {
+export function AppLauncher({
+  externalToggle,
+  onBackToWorkspaces,
+  onShutdownVm,
+  disableShutdown = false,
+}: {
+  externalToggle?: number;
+  onBackToWorkspaces?: () => void;
+  onShutdownVm?: () => void;
+  disableShutdown?: boolean;
+}) {
   const [manualOpen, setManualOpen] = useState(false);
   const apps = useDesktopStore((s) => s.apps);
   const launchApp = useLaunchApp();
@@ -53,10 +63,48 @@ export function AppLauncher({ externalToggle }: { externalToggle?: number }) {
         <span className="hidden text-label-13 sm:inline">Apps</span>
       </button>
 
-      <CommandDialog open={open} onOpenChange={setOpen}>
+      <CommandDialog
+        open={open}
+        onOpenChange={setOpen}
+        className="z-11000"
+      >
         <Command>
           <CommandInput placeholder="Search apps..." />
           <CommandList>
+            {(onBackToWorkspaces || onShutdownVm) && (
+              <CommandGroup heading="Workspace">
+                {onBackToWorkspaces && (
+                  <CommandItem
+                    value="back to workspaces desktop"
+                    onSelect={() => {
+                      onBackToWorkspaces();
+                      setOpen(false);
+                    }}
+                  >
+                    <LogOut className="size-4 shrink-0" />
+                    <span>Back to Workspaces</span>
+                  </CommandItem>
+                )}
+                {onShutdownVm && (
+                  <CommandItem
+                    value="shutdown vm workspace"
+                    disabled={disableShutdown}
+                    onSelect={() => {
+                      if (disableShutdown) return;
+                      onShutdownVm();
+                      setOpen(false);
+                    }}
+                  >
+                    <Power className="size-4 shrink-0" />
+                    <span>Shutdown VM</span>
+                  </CommandItem>
+                )}
+              </CommandGroup>
+            )}
+            {(onBackToWorkspaces || onShutdownVm) &&
+              (builtinApps.length > 0 || x11Apps.length > 0) && (
+                <CommandSeparator />
+              )}
             {builtinApps.length > 0 && (
               <CommandGroup heading="Built-in">
                 {builtinApps.map((entry) => (

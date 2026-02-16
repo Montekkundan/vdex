@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 import { useActiveSandbox } from "@/stores/workspace-store";
 import { useNotificationStore } from "@/stores/notification-store";
@@ -10,6 +10,31 @@ import {
   sandboxServiceOnErrorRetry,
   useSandboxServiceClient,
 } from "@/lib/hooks/use-sandbox-service-client";
+
+const HIDDEN_POLL_INTERVAL_MS = 60000;
+const FAST_NOTIFICATION_POLL_INTERVAL_MS = 3000;
+const SLOW_NOTIFICATION_POLL_INTERVAL_MS = 30000;
+const FAST_APPS_POLL_INTERVAL_MS = 5000;
+const SLOW_APPS_POLL_INTERVAL_MS = 60000;
+
+function usePageVisibility() {
+  const [isPageVisible, setIsPageVisible] = useState(
+    typeof document === "undefined" ? true : !document.hidden,
+  );
+
+  useEffect(() => {
+    const onVisibilityChange = () => setIsPageVisible(!document.hidden);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, []);
+
+  return isPageVisible;
+}
+
+function isTransitioningStatus(status?: string | null) {
+  if (!status) return false;
+  return status.toLowerCase() !== "running";
+}
 
 interface BridgeNotification {
   id: number;
@@ -44,16 +69,22 @@ interface BridgeNotificationsResponse {
  * notifications newer than the last seen timestamp.
  */
 export function useDbusNotifications() {
-  const { activeWorkspaceId } = useActiveSandbox();
+  const { activeWorkspaceId, sandbox } = useActiveSandbox();
   const { serviceUrl } = useSandboxServiceClient();
+  const isPageVisible = usePageVisibility();
   const sinceRef = useRef(0);
   const addNotification = useNotificationStore((s) => s.addNotification);
+  const refreshInterval = !isPageVisible
+    ? HIDDEN_POLL_INTERVAL_MS
+    : isTransitioningStatus(sandbox?.status)
+      ? FAST_NOTIFICATION_POLL_INTERVAL_MS
+      : SLOW_NOTIFICATION_POLL_INTERVAL_MS;
 
   const { data } = useSWR<BridgeNotificationsResponse>(
     serviceUrl("/bridge/notifications?since=0"),
     sandboxServiceFetcher,
     {
-      refreshInterval: 1000,
+      refreshInterval,
       revalidateOnFocus: false,
       revalidateOnReconnect: false,
       dedupingInterval: 500,
@@ -110,14 +141,20 @@ interface AppsGenerationResponse {
 export function useDesktopEntryMonitor() {
   const { activeWorkspaceId, sandbox } = useActiveSandbox();
   const { serviceUrl } = useSandboxServiceClient();
+  const isPageVisible = usePageVisibility();
   const generationRef = useRef<number | null>(null);
   const fetchRemoteApps = useDesktopStore((s) => s.fetchRemoteApps);
+  const refreshInterval = !isPageVisible
+    ? HIDDEN_POLL_INTERVAL_MS
+    : isTransitioningStatus(sandbox?.status)
+      ? FAST_APPS_POLL_INTERVAL_MS
+      : SLOW_APPS_POLL_INTERVAL_MS;
 
   const { data } = useSWR<AppsGenerationResponse>(
     serviceUrl("/bridge/apps-generation"),
     sandboxServiceFetcher,
     {
-      refreshInterval: 3000,
+      refreshInterval,
       revalidateOnFocus: false,
       revalidateOnReconnect: false,
       dedupingInterval: 2000,

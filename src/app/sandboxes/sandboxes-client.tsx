@@ -91,25 +91,55 @@ export function SandboxesClient() {
   const [showDeletedSnapshots, setShowDeletedSnapshots] = useState(false);
   const [selectedSandboxes, setSelectedSandboxes] = useState<SandboxListItem[]>([]);
   const [selectedSnapshots, setSelectedSnapshots] = useState<SnapshotListItem[]>([]);
+  const [isPageVisible, setIsPageVisible] = useState(
+    typeof document === "undefined" ? true : !document.hidden,
+  );
+
+  useEffect(() => {
+    const onVisibilityChange = () => setIsPageVisible(!document.hidden);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, []);
 
   const {
     data: sandboxesData,
     isLoading: sandboxesLoading,
     mutate: mutateSandboxes,
   } = useSWR<SandboxesResponse>("/api/vercel/sandboxes", fetcher, {
-    refreshInterval: 8000,
+    refreshInterval: (latestData) => {
+      const items = (latestData as SandboxesResponse | undefined)?.sandboxes ?? [];
+      const hasActiveTransitions = items.some((sandbox) =>
+        sandbox.status === "pending" ||
+        sandbox.status === "stopping" ||
+        sandbox.status === "snapshotting",
+      );
+
+      if (!isPageVisible) return 60000;
+      return hasActiveTransitions ? 8000 : 45000;
+    },
     revalidateOnFocus: true,
   });
+
+  const sandboxes = useMemo(() => sandboxesData?.sandboxes ?? [], [sandboxesData]);
+  const hasActiveTransitions = useMemo(
+    () =>
+      sandboxes.some((sandbox) =>
+        sandbox.status === "pending" ||
+        sandbox.status === "stopping" ||
+        sandbox.status === "snapshotting",
+      ),
+    [sandboxes],
+  );
+
   const {
     data: snapshotsData,
     isLoading: snapshotsLoading,
     mutate: mutateSnapshots,
   } = useSWR<SnapshotsResponse>("/api/vercel/snapshots", fetcher, {
-    refreshInterval: 10000,
+    refreshInterval: !isPageVisible ? 60000 : hasActiveTransitions ? 10000 : 60000,
     revalidateOnFocus: true,
   });
 
-  const sandboxes = useMemo(() => sandboxesData?.sandboxes ?? [], [sandboxesData]);
   const snapshots = useMemo(() => snapshotsData?.snapshots ?? [], [snapshotsData]);
   const visibleSandboxes = useMemo(
     () =>
