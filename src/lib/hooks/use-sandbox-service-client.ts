@@ -39,15 +39,43 @@ export async function sandboxServiceFetcher<T = unknown>(
     });
     throw error;
   }
+
+  const contentType = res.headers.get("content-type") ?? "";
+  const raw = await res.text();
+
+  const parseJson = (): Record<string, unknown> | null => {
+    if (!raw.trim()) return null;
+    try {
+      return JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  };
+
+  const parsed = parseJson();
+
   if (!res.ok) {
     let message = `Sandbox service error (${res.status})`;
-    try {
-      const body = await res.json();
-      if (body.error) message = body.error;
-    } catch {}
+    if (parsed && typeof parsed.error === "string" && parsed.error.trim()) {
+      message = parsed.error;
+    } else if (raw.trim()) {
+      message = raw.trim().slice(0, 300);
+    }
     throw new SandboxServiceError(message, res.status);
   }
-  return res.json();
+
+  if (!raw.trim()) {
+    return {} as T;
+  }
+
+  if (parsed) {
+    return parsed as T;
+  }
+
+  throw new SandboxServiceError(
+    `Invalid JSON response from sandbox service (${contentType || "unknown content type"})`,
+    res.status,
+  );
 }
 
 /**

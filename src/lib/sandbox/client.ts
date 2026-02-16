@@ -169,6 +169,20 @@ async function startServices(
   displayClient: DisplayClient,
   experience: WorkspaceExperience,
 ): Promise<void> {
+  // Some older/fallback snapshots may not contain SERVICE_DIR or may have
+  // root-owned permissions. Ensure the directory exists and is writable before
+  // using writeFiles (which uploads a tarball and needs write access).
+  await sandbox.runCommand({
+    cmd: "bash",
+    args: ["-c", `sudo mkdir -p ${SERVICE_DIR} && sudo chown $(whoami) ${SERVICE_DIR}`],
+  });
+
+  // Keep the in-sandbox service implementation current even when booting from
+  // older snapshots.
+  await sandbox.writeFiles([
+    { path: `${SERVICE_DIR}/service.js`, content: Buffer.from(getServiceCode()) },
+  ]);
+
   // Ensure DISPLAY and DBUS_SESSION_BUS_ADDRESS are set for all login shells.
   // Also baked into golden snapshot, but written at runtime for fresh sandboxes.
   await sandbox.runCommand({

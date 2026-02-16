@@ -30,6 +30,8 @@ export interface Workspace {
   status: WorkspaceStatus;
   sandboxDomain: string | null;
   background: string | null;
+  shareEnabled: boolean;
+  shareId: string | null;
   createdAt: string;
   updatedAt: string;
 }

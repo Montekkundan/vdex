@@ -50,25 +50,33 @@ export const accounts = pgTable("accounts", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-export const workspaces = pgTable("workspaces", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  userId: uuid("user_id")
-    .references(() => users.id)
-    .notNull(),
-  name: text("name").notNull(),
-  sandboxId: text("sandbox_id"),
-  snapshotId: text("snapshot_id"),
-  icon: text("icon").default("terminal").notNull(),
-  provider: text("provider").default("vercel").notNull(),
-  experience: text("experience").default("gui").notNull(),
-  displayClient: text("display_client").default("xpra").notNull(),
-  sizeProfile: text("size_profile").default("small_2c4g").notNull(),
-  status: workspaceStatusEnum("status").default("stopped").notNull(),
-  windowState: jsonb("window_state"),
-  background: text("background"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+export const workspaces = pgTable(
+  "workspaces",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .references(() => users.id)
+      .notNull(),
+    name: text("name").notNull(),
+    sandboxId: text("sandbox_id"),
+    snapshotId: text("snapshot_id"),
+    icon: text("icon").default("terminal").notNull(),
+    provider: text("provider").default("vercel").notNull(),
+    experience: text("experience").default("gui").notNull(),
+    displayClient: text("display_client").default("xpra").notNull(),
+    sizeProfile: text("size_profile").default("small_2c4g").notNull(),
+    status: workspaceStatusEnum("status").default("stopped").notNull(),
+    windowState: jsonb("window_state"),
+    background: text("background"),
+    shareEnabled: boolean("share_enabled").default(false).notNull(),
+    shareId: text("share_id"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    shareIdUnique: uniqueIndex("workspaces_share_id_unique").on(table.shareId),
+  }),
+);
 
 export const apps = pgTable("apps", {
   id: uuid("id").primaryKey().defaultRandom(),

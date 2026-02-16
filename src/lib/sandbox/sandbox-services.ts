@@ -422,25 +422,34 @@ const server = http.createServer(async (req, res) => {
 
 // WebSocket PTY at /ws/terminal on the same HTTP server
 const wss = new WebSocketServer({ server, path: "/ws/terminal" });
+const terminalSessions = new Map();
+const TERMINAL_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+const TERMINAL_MAX_BACKLOG_BYTES = 512 * 1024;
 
-wss.on("connection", (ws, req) => {
-  const url = new URL(req.url, \`http://localhost:\${PORT}\`);
-  const cols = parseInt(url.searchParams.get("cols") || "80", 10);
-  const rows = parseInt(url.searchParams.get("rows") || "24", 10);
+function normalizeSessionName(raw) {
+  return (raw || "main").trim().replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 48) || "main";
+}
 
+function createTerminalSession(sessionName, cols, rows) {
   const home = process.env.HOME || require("os").homedir();
-  const env = { ...process.env, TERM: "xterm-256color", HOME: home, COLUMNS: String(cols), LINES: String(rows) };
+  const env = {
+    ...process.env,
+    TERM: "xterm-256color",
+    HOME: home,
+    COLUMNS: String(cols),
+    LINES: String(rows),
+  };
 
   // Use Python to spawn bash in a real PTY with proper size control.
-  // Python's pty.fork() gives us a true PTY with ioctl resize support.
   const pyScript = \`
 import pty, os, sys, fcntl, struct, termios, select, signal
 
 cols, rows = int(sys.argv[1]), int(sys.argv[2])
+home = os.environ.get("HOME") or os.path.expanduser("~")
 pid, fd = pty.fork()
 if pid == 0:
-    os.chdir("\${home}")
-    os.execvpe("/bin/bash", ["/bin/bash", "-l"], dict(os.environ, TERM="xterm-256color", HOME="\${home}"))
+    os.chdir(home)
+    os.execvpe("/bin/bash", ["/bin/bash", "-l"], dict(os.environ, TERM="xterm-256color", HOME=home))
 
 # Set initial size
 fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
@@ -499,24 +508,105 @@ except: pass
     stdio: ["pipe", "pipe", "pipe"],
   });
 
-  shell.stdout.on("data", (data) => { if (ws.readyState === 1) ws.send(data); });
-  shell.stderr.on("data", (data) => { if (ws.readyState === 1) ws.send(data); });
+  const entry = {
+    name: sessionName,
+    shell,
+    clients: new Set(),
+    backlog: [],
+    backlogBytes: 0,
+    idleTimer: null,
+  };
+
+  const pushBacklog = (data) => {
+    const chunk = Buffer.isBuffer(data) ? data : Buffer.from(data);
+    entry.backlog.push(chunk);
+    entry.backlogBytes += chunk.length;
+    while (entry.backlogBytes > TERMINAL_MAX_BACKLOG_BYTES && entry.backlog.length > 1) {
+      const removed = entry.backlog.shift();
+      if (removed) entry.backlogBytes -= removed.length;
+    }
+  };
+
+  const fanout = (data) => {
+    pushBacklog(data);
+    for (const client of entry.clients) {
+      if (client.readyState === 1) {
+        try { client.send(data); } catch {}
+      }
+    }
+  };
+
+  shell.stdout.on("data", fanout);
+  shell.stderr.on("data", fanout);
+  shell.on("exit", () => {
+    if (entry.idleTimer) clearTimeout(entry.idleTimer);
+    for (const client of entry.clients) {
+      try { client.close(); } catch {}
+    }
+    terminalSessions.delete(sessionName);
+  });
+
+  terminalSessions.set(sessionName, entry);
+  return entry;
+}
+
+function scheduleTerminalCleanup(entry) {
+  if (entry.idleTimer) clearTimeout(entry.idleTimer);
+  entry.idleTimer = setTimeout(() => {
+    if (entry.clients.size > 0) return;
+    try { entry.shell.kill(); } catch {}
+  }, TERMINAL_IDLE_TIMEOUT_MS);
+}
+
+function ensureTerminalSession(sessionName, cols, rows) {
+  const existing = terminalSessions.get(sessionName);
+  if (!existing) return createTerminalSession(sessionName, cols, rows);
+  if (existing.idleTimer) {
+    clearTimeout(existing.idleTimer);
+    existing.idleTimer = null;
+  }
+  try {
+    existing.shell.stdin.write("\\x01" + JSON.stringify({ type: "resize", cols, rows }));
+  } catch {}
+  return existing;
+}
+
+wss.on("connection", (ws, req) => {
+  const url = new URL(req.url, \`http://localhost:\${PORT}\`);
+  const parsedCols = parseInt(url.searchParams.get("cols") || "80", 10);
+  const parsedRows = parseInt(url.searchParams.get("rows") || "24", 10);
+  const cols = Number.isFinite(parsedCols) && parsedCols > 0 ? parsedCols : 80;
+  const rows = Number.isFinite(parsedRows) && parsedRows > 0 ? parsedRows : 24;
+  const readonly = url.searchParams.get("readonly") === "1";
+  const session = normalizeSessionName(url.searchParams.get("session") || "main");
+  const entry = ensureTerminalSession(session, cols, rows);
+  entry.clients.add(ws);
+
+  for (const chunk of entry.backlog) {
+    if (ws.readyState !== 1) break;
+    try { ws.send(chunk); } catch {}
+  }
 
   ws.on("message", (msg) => {
     const str = typeof msg === "string" ? msg : msg.toString("utf-8");
     try {
       const parsed = JSON.parse(str);
       if (parsed.type === "resize" && parsed.cols && parsed.rows) {
-        // Send resize command with \\x01 prefix so Python can detect it
-        shell.stdin.write("\\x01" + JSON.stringify(parsed));
+        if (readonly) return;
+        entry.shell.stdin.write("\\x01" + JSON.stringify(parsed));
         return;
       }
     } catch {}
-    shell.stdin.write(str);
+    if (readonly) return;
+    entry.shell.stdin.write(str);
   });
 
-  ws.on("close", () => { try { shell.kill(); } catch {} });
-  shell.on("exit", () => { if (ws.readyState === 1) ws.close(); });
+  ws.on("close", () => {
+    entry.clients.delete(ws);
+    if (entry.clients.size === 0) {
+      scheduleTerminalCleanup(entry);
+    }
+  });
 });
 
 function json(res, data) { res.writeHead(200, { "Content-Type": "application/json" }); res.end(JSON.stringify(data)); }
