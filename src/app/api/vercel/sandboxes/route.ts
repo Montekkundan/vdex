@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { Sandbox } from "@vercel/sandbox";
+import { inArray } from "drizzle-orm";
 import { getSession } from "@/lib/auth/session";
+import { db } from "@/lib/db/client";
+import { warmPool } from "@/lib/db/schema";
 
 export async function GET() {
   const session = await getSession();
@@ -13,8 +16,36 @@ export async function GET() {
 
   try {
     const { json } = await Sandbox.list();
+    const sandboxes = json.sandboxes ?? [];
+    const sandboxIds = sandboxes.map((sandbox) => sandbox.id).filter(Boolean);
+
+    const poolRows = sandboxIds.length > 0
+      ? await db
+          .select({
+            sandboxId: warmPool.sandboxId,
+            userId: warmPool.userId,
+          })
+          .from(warmPool)
+          .where(inArray(warmPool.sandboxId, sandboxIds))
+      : [];
+
+    const poolBySandboxId = new Map(
+      poolRows.map((row) => [row.sandboxId, row]),
+    );
+
+    const sandboxesWithLaunchType = sandboxes.map((sandbox) => {
+      const poolRow = poolBySandboxId.get(sandbox.id);
+      const launchType = poolRow
+        ? (poolRow.userId ? "warm_pool_policy" : "warm_pool")
+        : "cold_boot";
+      return {
+        ...sandbox,
+        launchType,
+      };
+    });
+
     return NextResponse.json({
-      sandboxes: json.sandboxes,
+      sandboxes: sandboxesWithLaunchType,
       pagination: json.pagination,
     });
   } catch (err) {
