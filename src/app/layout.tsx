@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ObservabilityProvider } from "@/components/observability/observability-provider";
 import { UseConsoleYo } from "@/components/use-console-yo";
 import "./globals.css";
+import { Analytics } from '@vercel/analytics/next';
 
 const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
@@ -93,6 +94,7 @@ export default function RootLayout({
             </TooltipProvider>
           </ObservabilityProvider>
         </ThemeProvider>
+        <Analytics />
       </body>
     </html>
   );
