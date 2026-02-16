@@ -11,6 +11,7 @@ import { reportDesktopError } from "@/lib/desktop/report-error";
  */
 const DUSK_ICON_MAP: Record<string, string> = {
   // Browsers
+  browser: "browser",
   firefox: "firefox",
   "google chrome": "chrome",
   chrome: "chrome",
