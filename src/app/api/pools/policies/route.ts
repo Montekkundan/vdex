@@ -62,7 +62,7 @@ export async function POST(req: Request) {
   if (!resolvedDisplayClient.ok) {
     return NextResponse.json({ error: resolvedDisplayClient.error.message }, { status: 400 });
   }
-  const resolvedSize = validateSizeProfile(body.sizeProfile ?? "balanced_4c8g");
+  const resolvedSize = validateSizeProfile(body.sizeProfile ?? "small_2c4g");
   if (!resolvedSize.ok) {
     return NextResponse.json({ error: resolvedSize.error.message }, { status: 400 });
   }

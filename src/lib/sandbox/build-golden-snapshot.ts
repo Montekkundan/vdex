@@ -97,7 +97,7 @@ export async function buildGoldenSnapshot(options?: {
   //
   //   dnfPackages ──┬──> xpraInstall (also depends on xpraDownload)
   //                 ├──> sysConfig
-  //                 └──> firefoxProfile
+  //                 └──> browserSetup
   //   codeServer ─────> codeServerExtensions
   //   npmGlobals ─────> serviceFiles
   //   xdgDesktop        (no deps)
@@ -251,53 +251,82 @@ alias editor=vim
 ALIASEOF
 `;
 
-  const firefoxProfileScript = `
-if command -v firefox &> /dev/null; then
-  FIREFOX_PROFILE_DIR="$HOME/.mozilla/firefox"
+  const browserSetupScript = `
+set -euo pipefail
 
-  # Create profile using Firefox headless mode
-  DISPLAY=${XPRA_DISPLAY} firefox --headless --createprofile "default $FIREFOX_PROFILE_DIR/default" 2>/dev/null || true
-  sleep 1
+# Install Chrome from official repo for AL2023; fallback to Firefox if unavailable.
+sudo tee /etc/yum.repos.d/google-chrome.repo > /dev/null << 'CHROMEREPOEOF'
+[google-chrome]
+name=google-chrome
+baseurl=https://dl.google.com/linux/chrome/rpm/stable/x86_64
+enabled=1
+gpgcheck=1
+gpgkey=https://dl.google.com/linux/linux_signing_key.pub
+CHROMEREPOEOF
 
-  # Set Default=1 in profiles.ini
-  if [ -f "$FIREFOX_PROFILE_DIR/profiles.ini" ]; then
-    if ! grep -q "^Default=1" "$FIREFOX_PROFILE_DIR/profiles.ini"; then
-      sed -i '/^\\[Profile0\\]/a Default=1' "$FIREFOX_PROFILE_DIR/profiles.ini"
-    fi
-  fi
-
-  # User preferences: skip first-run, prefer modern compositor path for XPRA
-  if [ -d "$FIREFOX_PROFILE_DIR/default" ]; then
-    cat > "$FIREFOX_PROFILE_DIR/default/user.js" << 'USERJS_EOF'
-user_pref("browser.startup.homepage", "about:blank");
-user_pref("browser.startup.page", 1);
-user_pref("browser.startup.homepage_override.mstone", "ignore");
-user_pref("startup.homepage_welcome_url", "");
-user_pref("startup.homepage_welcome_url.additional", "");
-user_pref("browser.startup.firstrunSkipsHomepage", true);
-user_pref("datareporting.policy.dataSubmissionPolicyBypassNotification", true);
-user_pref("browser.aboutwelcome.enabled", false);
-user_pref("toolkit.legacyUserProfileCustomizations.stylesheets", true);
-user_pref("gfx.webrender.software", true);
-user_pref("layers.acceleration.disabled", false);
-user_pref("browser.tabs.warnOnClose", false);
-user_pref("browser.shell.checkDefaultBrowser", false);
-user_pref("browser.rights.3.shown", true);
-USERJS_EOF
-  fi
-
-  # Create installs.ini so Firefox doesn't ask to set default
-  FIREFOX_PATH=$(dirname "$(readlink -f "$(command -v firefox)")")
-  INSTALL_HASH=$(echo -n "$FIREFOX_PATH" | tr '[:upper:]' '[:lower:]' | md5sum | cut -c1-16 | tr '[:lower:]' '[:upper:]')
-  cat > "$FIREFOX_PROFILE_DIR/installs.ini" << INSTALLS_EOF
-[\$INSTALL_HASH]
-Default=default
-Locked=1
-INSTALLS_EOF
-  echo "Firefox profile created"
-else
-  echo "Firefox not found, skipping profile setup"
+if ! command -v google-chrome-stable >/dev/null 2>&1; then
+  sudo dnf install -y google-chrome-stable || true
 fi
+
+if ! command -v google-chrome-stable >/dev/null 2>&1; then
+  sudo dnf install -y firefox || true
+fi
+
+# Unified lightweight launcher used by desktop shortcuts and app launcher.
+sudo tee /usr/local/bin/vdesk-browser > /dev/null << 'BROWSEREOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+URL="\${1:-about:blank}"
+mkdir -p "$HOME/.config/vdesk-browser"
+
+if command -v google-chrome-stable >/dev/null 2>&1; then
+  google-chrome-stable \
+    --ozone-platform=x11 \
+    --user-data-dir="$HOME/.config/vdesk-browser" \
+    --no-sandbox \
+    --disable-setuid-sandbox \
+    --disable-dev-shm-usage \
+    --disable-gpu \
+    --no-first-run \
+    --disable-sync \
+    --disable-default-apps \
+    --disable-extensions \
+    --disable-background-networking \
+    --disable-component-update \
+    --password-store=basic \
+    "$URL" && exit 0
+
+  echo "google-chrome-stable failed to start, falling back to firefox" >&2
+fi
+
+if command -v firefox >/dev/null 2>&1; then
+  exec firefox --new-window "$URL"
+fi
+
+echo "No supported browser is installed (google-chrome-stable/firefox)." >&2
+exit 1
+BROWSEREOF
+
+sudo chmod +x /usr/local/bin/vdesk-browser
+
+# Make browser app discoverable for desktop scans.
+mkdir -p "$HOME/.local/share/applications"
+cat > "$HOME/.local/share/applications/vdesk-browser.desktop" << 'BROWSERDESKTOPEOF'
+[Desktop Entry]
+Name=Browser
+Comment=Lightweight browser launcher for vdesk
+Exec=vdesk-browser
+Icon=google-chrome
+Type=Application
+Categories=Network;WebBrowser;
+BROWSERDESKTOPEOF
+
+if ! command -v google-chrome-stable >/dev/null 2>&1 && command -v firefox >/dev/null 2>&1; then
+  sed -i 's/^Icon=.*/Icon=firefox/' "$HOME/.local/share/applications/vdesk-browser.desktop"
+fi
+
+echo "Browser setup done"
   `;
 
   const cargoPathScript = `
@@ -435,7 +464,7 @@ echo "  vnc backend: $VNC_BIN"
         return runStep(
           "CLI base packages",
           [
-            "sudo dnf install -y git python3 python3-pip tmux jq tree wget unzip tar gzip xz vim-enhanced cargo rust gcc gcc-c++ make",
+            "sudo dnf install -y git python3 python3-pip tmux jq tree wget unzip tar gzip xz vim-enhanced cargo rust gcc gcc-c++ make openssl-devel sqlite-devel",
             "sudo ln -sf /usr/bin/vim /usr/local/bin/vi",
           ].join(" && "),
         );
@@ -551,12 +580,14 @@ echo "  vnc backend: $VNC_BIN"
         [
           "sudo dnf install -y spal-release",
             "sudo dnf install -y vim-enhanced wget jq tree tmux cpio gcc gcc-c++ make" +
+            " openssl-devel" +
+            " sqlite-devel" +
             " xorg-x11-server-Xvfb xorg-x11-server-Xorg xorg-x11-drv-dummy mesa-dri-drivers dbus-x11 xdg-utils git python3-pip xterm xorg-x11-fonts-misc xorg-x11-fonts-Type1 xorg-x11-fonts-100dpi" +
             " unzip" +
             " cargo rust" +
             " mesa-libEGL mesa-libGLES mesa-libgbm libglvnd-egl libglvnd-gles" +
             " gstreamer1 gstreamer1-plugins-base gstreamer1-plugins-good" +
-            " firefox nautilus gnome-calculator gnome-text-editor" +
+            " nautilus gnome-calculator gnome-text-editor" +
             " libnotify python3-dbus python3-pyxdg python3-gobject" +
             " xdpyinfo" +
             " google-noto-sans-fonts google-noto-emoji-fonts dejavu-fonts-all adwaita-icon-theme",
@@ -593,10 +624,10 @@ echo "  vnc backend: $VNC_BIN"
       return runStep("Configure Cargo PATH", cargoPathScript);
     },
 
-    // Firefox profile setup — needs firefox binary from dnf
-    async firefoxProfile() {
+    // Browser setup — prefers Chrome from official repo, falls back to Firefox
+    async browserSetup() {
       await this.$.dnfPackages;
-      return runStep("Firefox profile", firefoxProfileScript);
+      return runStep("Browser setup", browserSetupScript);
     },
 
     // Install code-server binary (independent of dnf)
@@ -819,14 +850,14 @@ echo "  vnc backend: $VNC_BIN"
           ),
         },
         {
-          path: `${HOME}/Desktop/firefox.desktop`,
+          path: `${HOME}/Desktop/browser.desktop`,
           content: Buffer.from(
             [
               "[Desktop Entry]",
-              "Name=Firefox",
+              "Name=Browser",
               "Comment=Web browser",
-              "Exec=firefox",
-              "Icon=firefox",
+              "Exec=vdesk-browser",
+              "Icon=google-chrome",
               "Type=Application",
               "Categories=Network;WebBrowser;",
             ].join("\n") + "\n",

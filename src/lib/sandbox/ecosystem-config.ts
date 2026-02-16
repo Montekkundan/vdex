@@ -54,7 +54,7 @@ module.exports = {
       autorestart: true,
       max_restarts: 5,
       env: {
-        DISPLAY_CLIENT: process.env.DISPLAY_CLIENT || "xpra",
+        DISPLAY_CLIENT: process.env.DISPLAY_CLIENT || "webrtc",
         WORKSPACE_EXPERIENCE: process.env.WORKSPACE_EXPERIENCE || "gui",
         DBUS_SESSION_BUS_ADDRESS: "unix:path=${DBUS_SOCKET_PATH}",
       },
@@ -928,7 +928,7 @@ export function getDisplayStartScript(): string {
   return `#!/bin/bash
 set -euo pipefail
 
-CLIENT="\${DISPLAY_CLIENT:-xpra}"
+CLIENT="\${DISPLAY_CLIENT:-webrtc}"
 EXPERIENCE="\${WORKSPACE_EXPERIENCE:-gui}"
 
 if [ "$EXPERIENCE" = "cli" ]; then

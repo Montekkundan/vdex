@@ -309,7 +309,7 @@ export async function POST(req: Request) {
     const providerInput = body.provider ?? "vercel";
     const experienceInput = body.experience ?? "gui";
     const displayClientInput = body.displayClient ?? "xpra";
-    const sizeProfileInput = body.sizeProfile ?? "balanced_4c8g";
+    const sizeProfileInput = body.sizeProfile ?? "small_2c4g";
 
     const resolvedProvider = validateProvider(providerInput);
     if (!resolvedProvider.ok) {

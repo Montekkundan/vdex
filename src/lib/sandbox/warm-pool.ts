@@ -152,7 +152,7 @@ export async function replenishPool(): Promise<{
             claimStatus: "ready",
             provider: "vercel",
             experience: "gui",
-            displayClient: "xpra",
+            displayClient: "webrtc",
             sizeProfile: "balanced_4c8g",
             snapshotRefType: "platform_default",
           });

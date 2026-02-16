@@ -67,7 +67,7 @@ export function DesktopHub() {
   const [newWorkspaceIcon, setNewWorkspaceIcon] = useState("terminal");
   const [newWorkspaceProvider, setNewWorkspaceProvider] = useState<ProviderId>("vercel");
   const [newWorkspaceExperience, setNewWorkspaceExperience] = useState<WorkspaceExperience>("gui");
-  const [newWorkspaceSizeProfile, setNewWorkspaceSizeProfile] = useState<SizeProfileId>("balanced_4c8g");
+  const [newWorkspaceSizeProfile, setNewWorkspaceSizeProfile] = useState<SizeProfileId>("small_2c4g");
   const [newWorkspaceSnapshotSource, setNewWorkspaceSnapshotSource] = useState<
     "platform_default" | "user_snapshot"
   >("platform_default");
@@ -336,7 +336,7 @@ export function DesktopHub() {
     setNewWorkspaceIcon("terminal");
     setNewWorkspaceProvider("vercel");
     setNewWorkspaceExperience("gui");
-    setNewWorkspaceSizeProfile("balanced_4c8g");
+    setNewWorkspaceSizeProfile("small_2c4g");
     setNewWorkspaceSnapshotSource("platform_default");
     setNewWorkspaceSnapshotRefId("");
   }
