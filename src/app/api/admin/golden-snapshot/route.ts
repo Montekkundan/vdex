@@ -1,270 +1,38 @@
 import { NextResponse } from "next/server";
+import { start } from "workflow/api";
+import { getWorld } from "workflow/runtime";
+import { cancelRun } from "@workflow/core/runtime";
 import { getSession } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
 import { config, warmPool, users, snapshotRebuildJobs, workspaceLaunchEvents } from "@/lib/db/schema";
 import { eq, sql, desc, isNotNull, inArray, and } from "drizzle-orm";
+import { runSnapshotRebuildWorkflow, type SnapshotRebuildMode } from "@/workflows/snapshot-rebuild";
+import {
+  appendRebuildJobLog,
+  updateRebuildJob,
+} from "@/lib/admin/snapshot-rebuild-jobs";
 import {
   getGoldenSnapshotId,
 } from "@/lib/sandbox/golden-snapshot";
-import { buildGoldenSnapshot } from "@/lib/sandbox/build-golden-snapshot";
 import { getSandbox } from "@/lib/sandbox/client";
 import { isLiveSandboxStatus } from "@/lib/sandbox/status";
 
 export const maxDuration = 300;
-let activeRebuildAllJobId: string | null = null;
 
-function getStatusCodeFromError(err: unknown): number | null {
-  if (!err || typeof err !== "object") return null;
-  const maybeStatus = (err as { status?: unknown }).status;
-  if (typeof maybeStatus === "number") return maybeStatus;
-  const maybeStatusCode = (err as { statusCode?: unknown }).statusCode;
-  if (typeof maybeStatusCode === "number") return maybeStatusCode;
-  const maybeResponseStatus = (err as { response?: { status?: unknown } }).response?.status;
-  if (typeof maybeResponseStatus === "number") return maybeResponseStatus;
-  return null;
+function extractWorkflowRunIdFromLogs(message: string | null): string | null {
+  if (!message) return null;
+  const matches = [...message.matchAll(/\[job\]\s+workflow_run_id:\s*([^\s\n]+)/g)];
+  const last = matches[matches.length - 1];
+  return last?.[1] ?? null;
 }
 
-function formatRebuildError(err: unknown): string {
-  const raw = err instanceof Error ? err.message : "Unknown error";
-  const status = getStatusCodeFromError(err);
-  const normalized = status ?? (raw.match(/Status code\s+(\d{3})\s+is not ok/i)?.[1]
-    ? Number(raw.match(/Status code\s+(\d{3})\s+is not ok/i)?.[1])
-    : null);
-
-  if (normalized === 402) {
-    return "Vercel Sandbox API returned 402 (Payment Required): Sandbox quota/credits or spend limit appears exhausted for this project/token. Check billing, spending limits, and sandbox entitlement, then retry.";
-  }
-
-  return raw;
-}
-
-async function updateRebuildJob(
-  jobId: string,
-  patch: Partial<{
-    status: "running" | "succeeded" | "failed";
-    progress: number;
-    stage: string;
-    message: string | null;
-    guiSnapshotId: string | null;
-    cliSnapshotId: string | null;
-    error: string | null;
-    finishedAt: Date | null;
-  }>,
-) {
-  await db
-    .update(snapshotRebuildJobs)
-    .set({
-      ...patch,
-      updatedAt: new Date(),
-    })
-    .where(eq(snapshotRebuildJobs.id, jobId));
-}
-
-async function updateRunningRebuildJob(
-  jobId: string,
-  patch: Partial<{
-    status: "running" | "succeeded" | "failed";
-    progress: number;
-    stage: string;
-    message: string | null;
-    guiSnapshotId: string | null;
-    cliSnapshotId: string | null;
-    error: string | null;
-    finishedAt: Date | null;
-  }>,
-) {
-  await db
-    .update(snapshotRebuildJobs)
-    .set({
-      ...patch,
-      updatedAt: new Date(),
-    })
-    .where(
-      and(
-        eq(snapshotRebuildJobs.id, jobId),
-        eq(snapshotRebuildJobs.status, "running"),
-      ),
-    );
-}
-
-async function appendRebuildJobLog(jobId: string, line: string) {
-  await db
-    .update(snapshotRebuildJobs)
-    .set({
-      message: sql`right(coalesce(${snapshotRebuildJobs.message}, '') || ${line} || E'\n', 60000)`,
-      updatedAt: new Date(),
-    })
-    .where(eq(snapshotRebuildJobs.id, jobId));
-}
-
-async function appendRunningRebuildJobLog(jobId: string, line: string) {
-  await db
-    .update(snapshotRebuildJobs)
-    .set({
-      message: sql`right(coalesce(${snapshotRebuildJobs.message}, '') || ${line} || E'\n', 60000)`,
-      updatedAt: new Date(),
-    })
-    .where(
-      and(
-        eq(snapshotRebuildJobs.id, jobId),
-        eq(snapshotRebuildJobs.status, "running"),
-      ),
-    );
-}
-
-async function isRebuildJobRunning(jobId: string): Promise<boolean> {
-  const [row] = await db
-    .select({ status: snapshotRebuildJobs.status })
-    .from(snapshotRebuildJobs)
-    .where(eq(snapshotRebuildJobs.id, jobId))
-    .limit(1);
-
-  return row?.status === "running";
-}
-
-async function runRebuildAllJob(jobId: string) {
+async function cancelWorkflowRunIfPresent(runId: string | null): Promise<boolean> {
+  if (!runId) return false;
   try {
-    await appendRunningRebuildJobLog(jobId, "[job] Rebuild all started");
-    await updateRunningRebuildJob(jobId, {
-      status: "running",
-      progress: 10,
-      stage: "rebuilding_gui",
-    });
-    await appendRunningRebuildJobLog(jobId, "[job] Rebuilding GUI snapshot");
-
-    const gui = await buildGoldenSnapshot({
-      logPrefix: "admin:golden-snapshot:gui",
-      experience: "gui",
-      persistAsPlatformDefault: true,
-      onLog: async (line) => appendRunningRebuildJobLog(jobId, line),
-    });
-
-    if (!(await isRebuildJobRunning(jobId))) {
-      return;
-    }
-
-    await updateRunningRebuildJob(jobId, {
-      progress: 55,
-      stage: "rebuilding_cli",
-      guiSnapshotId: gui.snapshotId,
-    });
-    await appendRunningRebuildJobLog(jobId, `[job] GUI snapshot ready: ${gui.snapshotId}`);
-    await appendRunningRebuildJobLog(jobId, "[job] Rebuilding CLI snapshot");
-
-    const cli = await buildGoldenSnapshot({
-      logPrefix: "admin:golden-snapshot:cli",
-      experience: "cli",
-      persistAsPlatformDefault: true,
-      onLog: async (line) => appendRunningRebuildJobLog(jobId, line),
-    });
-
-    if (!(await isRebuildJobRunning(jobId))) {
-      return;
-    }
-
-    await updateRunningRebuildJob(jobId, {
-      progress: 85,
-      stage: "finalizing",
-      cliSnapshotId: cli.snapshotId,
-    });
-    await appendRunningRebuildJobLog(jobId, `[job] CLI snapshot ready: ${cli.snapshotId}`);
-
-    await updateRunningRebuildJob(jobId, {
-      status: "succeeded",
-      progress: 100,
-      stage: "completed",
-      finishedAt: new Date(),
-    });
-    await appendRunningRebuildJobLog(jobId, "[job] Rebuild all completed");
-  } catch (err) {
-    const errorMessage = formatRebuildError(err);
-    await appendRunningRebuildJobLog(
-      jobId,
-      `[job] Rebuild all failed: ${errorMessage}`,
-    );
-    await updateRunningRebuildJob(jobId, {
-      status: "failed",
-      progress: 100,
-      stage: "failed",
-      error: errorMessage,
-      finishedAt: new Date(),
-    });
-  } finally {
-    activeRebuildAllJobId = null;
-  }
-}
-
-async function runSingleRebuildJob(
-  jobId: string,
-  options: { isCli: boolean; installScript?: string },
-) {
-  const { isCli, installScript } = options;
-  const experience = isCli ? "cli" : "gui";
-  const label = isCli ? "cli" : "gui";
-  const logPrefix = isCli
-    ? "admin:golden-snapshot:cli"
-    : "admin:golden-snapshot:gui";
-
-  try {
-    await appendRunningRebuildJobLog(jobId, `[job] Rebuild ${label} started`);
-    await updateRunningRebuildJob(jobId, {
-      status: "running",
-      progress: 10,
-      stage: `rebuilding_${label}`,
-    });
-    await appendRunningRebuildJobLog(
-      jobId,
-      `[job] Rebuilding ${label.toUpperCase()} snapshot`,
-    );
-
-    const result = await buildGoldenSnapshot({
-      installScript,
-      logPrefix,
-      experience,
-      persistAsPlatformDefault: true,
-      onLog: async (line) => appendRunningRebuildJobLog(jobId, line),
-    });
-
-    if (!(await isRebuildJobRunning(jobId))) {
-      return;
-    }
-
-    if (!isCli) {
-      await updateRunningRebuildJob(jobId, {
-        progress: 90,
-        stage: "finalizing_gui",
-        guiSnapshotId: result.snapshotId,
-      });
-    } else {
-      await updateRunningRebuildJob(jobId, {
-        progress: 90,
-        stage: "finalizing_cli",
-        cliSnapshotId: result.snapshotId,
-      });
-    }
-
-    await updateRunningRebuildJob(jobId, {
-      status: "succeeded",
-      progress: 100,
-      stage: "completed",
-      guiSnapshotId: isCli ? null : result.snapshotId,
-      cliSnapshotId: isCli ? result.snapshotId : null,
-      finishedAt: new Date(),
-    });
-    await appendRunningRebuildJobLog(jobId, `[job] Rebuild ${label} completed`);
-  } catch (err) {
-    const errorMessage = formatRebuildError(err);
-    await appendRunningRebuildJobLog(
-      jobId,
-      `[job] Rebuild ${label} failed: ${errorMessage}`,
-    );
-    await updateRunningRebuildJob(jobId, {
-      status: "failed",
-      progress: 100,
-      stage: "failed",
-      error: errorMessage,
-      finishedAt: new Date(),
-    });
+    await cancelRun(getWorld(), runId);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -415,7 +183,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "No running rebuild job found" }, { status: 404 });
     }
 
+    const workflowRunId = extractWorkflowRunIdFromLogs(runningJob.message);
+
     await appendRebuildJobLog(runningJob.id, "[job] Stop requested by admin");
+    if (workflowRunId) {
+      const cancelled = await cancelWorkflowRunIfPresent(workflowRunId);
+      await appendRebuildJobLog(
+        runningJob.id,
+        cancelled
+          ? `[job] Workflow run cancelled: ${workflowRunId}`
+          : `[job] Workflow cancellation failed or not found: ${workflowRunId}`,
+      );
+    }
     await updateRebuildJob(runningJob.id, {
       status: "failed",
       stage: "stopped_by_admin",
@@ -423,10 +202,6 @@ export async function POST(req: Request) {
       finishedAt: new Date(),
     });
     await appendRebuildJobLog(runningJob.id, "[job] Rebuild stopped by admin");
-
-    if (activeRebuildAllJobId === runningJob.id) {
-      activeRebuildAllJobId = null;
-    }
 
     const [updatedJob] = await db
       .select()
@@ -439,8 +214,8 @@ export async function POST(req: Request) {
 
   if (action === "rebuild" || action === "rebuild_gui" || action === "rebuild_cli") {
     const isCli = action === "rebuild_cli";
-    const experience = isCli ? "cli" : "gui";
     const label = isCli ? "cli" : "gui";
+    const mode: SnapshotRebuildMode = isCli ? "cli" : "gui";
 
     const [existingRunning] = await db
       .select()
@@ -466,10 +241,12 @@ export async function POST(req: Request) {
       })
       .returning();
 
-    void runSingleRebuildJob(job.id, {
-      isCli,
-      installScript: body.installScript,
-    });
+    const run = await start(runSnapshotRebuildWorkflow, [
+      job.id,
+      mode,
+      typeof body.installScript === "string" ? body.installScript : undefined,
+    ]);
+    await appendRebuildJobLog(job.id, `[job] workflow_run_id: ${run.runId}`);
 
     return NextResponse.json(
       {
@@ -477,28 +254,14 @@ export async function POST(req: Request) {
         started: true,
         job,
         jobId: job.id,
-        experience,
+        runId: run.runId,
+        experience: mode,
       },
       { status: 202 },
     );
   }
 
   if (action === "rebuild_all") {
-    if (activeRebuildAllJobId) {
-      const [running] = await db
-        .select()
-        .from(snapshotRebuildJobs)
-        .where(eq(snapshotRebuildJobs.id, activeRebuildAllJobId))
-        .limit(1);
-      if (running && running.status === "running") {
-        return NextResponse.json(
-          { ok: true, alreadyRunning: true, job: running },
-          { status: 202 },
-        );
-      }
-      activeRebuildAllJobId = null;
-    }
-
     const [existingRunning] = await db
       .select()
       .from(snapshotRebuildJobs)
@@ -506,7 +269,6 @@ export async function POST(req: Request) {
       .orderBy(desc(snapshotRebuildJobs.updatedAt))
       .limit(1);
     if (existingRunning) {
-      activeRebuildAllJobId = existingRunning.id;
       return NextResponse.json(
         { ok: true, alreadyRunning: true, job: existingRunning },
         { status: 202 },
@@ -524,9 +286,9 @@ export async function POST(req: Request) {
       })
       .returning();
 
-    activeRebuildAllJobId = job.id;
-    void runRebuildAllJob(job.id);
-    return NextResponse.json({ ok: true, started: true, job }, { status: 202 });
+    const run = await start(runSnapshotRebuildWorkflow, [job.id, "all"]);
+    await appendRebuildJobLog(job.id, `[job] workflow_run_id: ${run.runId}`);
+    return NextResponse.json({ ok: true, started: true, job, runId: run.runId }, { status: 202 });
   }
 
   return NextResponse.json({ error: "Unknown action" }, { status: 400 });

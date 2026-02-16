@@ -60,6 +60,7 @@
     "unicornstudio-react": "^2.0.1-1",
     "uuid": "^13.0.0",
     "vaul": "^1.1.2",
+    "workflow": "^4.1.0-beta.57",
     "xpra-html5-client": "^2.3.0",
     "zustand": "^5.0.11"
   },
