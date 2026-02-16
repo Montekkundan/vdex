@@ -378,7 +378,7 @@ const Card3 = ({ shouldReduceMotion }: { shouldReduceMotion: boolean }) => {
 };
 
 export function UseCases() {
-  const shouldReduceMotion = useReducedMotion();
+  const shouldReduceMotion = useReducedMotion() ?? false;
 
   return (
     <Section id="use-cases" title="Use Cases">

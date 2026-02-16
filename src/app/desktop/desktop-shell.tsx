@@ -528,22 +528,14 @@ export function DesktopShell({
           windowStateData as import("@/types/window").WindowState[],
         );
     } else {
-      const isCliWorkspace = activeWorkspaceFromStore?.experience === "cli";
-      // First boot: CLI workspaces open Terminal, GUI workspaces open Files.
+      // First boot for GUI workspaces: open Files as the welcome screen.
       useWindowStore.getState().openWindow(
-        isCliWorkspace
-          ? {
-              title: "Terminal",
-              appId: "terminal",
-              width: 900,
-              height: 560,
-            }
-          : {
-              title: "Files",
-              appId: "file-manager",
-              width: 800,
-              height: 500,
-            },
+        {
+          title: "Files",
+          appId: "file-manager",
+          width: 800,
+          height: 500,
+        },
       );
     }
   }, [

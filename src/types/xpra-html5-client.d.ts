@@ -10,6 +10,18 @@ declare module "xpra-html5-client" {
     constructor();
   }
 
+  export class XpraDecodeWebWorker {
+    constructor();
+  }
+
+  export class XpraPacketNullWorker {
+    constructor();
+  }
+
+  export class XpraPacketWebWorker {
+    constructor();
+  }
+
   export interface XpraWindow {
     id: number;
     wid: number;
@@ -96,6 +108,7 @@ declare module "xpra-html5-client" {
 
   export interface XpraClientOptions {
     decoder?: XpraDecodeNullWorker;
+    worker?: XpraPacketNullWorker;
   }
 
   export class XpraClipboard {
