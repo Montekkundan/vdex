@@ -461,14 +461,6 @@ interface DesktopEntriesResponse {
   apps: DesktopEntry[];
 }
 
-function isLocalhostBrowser(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    (window.location.hostname === "localhost" ||
-      window.location.hostname === "127.0.0.1")
-  );
-}
-
 function buildServiceKey(
   workspaceId: string | null,
   servicesDomain: string | null,
@@ -476,7 +468,7 @@ function buildServiceKey(
 ): string | null {
   if (!servicesDomain) return null;
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  if (isLocalhostBrowser() && workspaceId) {
+  if (workspaceId) {
     return `/api/sandbox/${workspaceId}/service${normalizedPath}`;
   }
   return `https://${servicesDomain}${normalizedPath}`;

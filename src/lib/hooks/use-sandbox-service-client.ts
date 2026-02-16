@@ -90,12 +90,8 @@ export function buildServiceUrl(
   workspaceId?: string | null,
 ): string | null {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  const isLocalhost =
-    typeof window !== "undefined" &&
-    (window.location.hostname === "localhost" ||
-      window.location.hostname === "127.0.0.1");
 
-  if (isLocalhost && workspaceId) {
+  if (workspaceId) {
     return `/api/sandbox/${workspaceId}/service${normalizedPath}`;
   }
 
