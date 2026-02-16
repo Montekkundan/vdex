@@ -231,6 +231,7 @@ export const userPoolPolicies = pgTable(
     userId: uuid("user_id")
       .references(() => users.id, { onDelete: "cascade" })
       .notNull(),
+    name: text("name").notNull(),
     provider: text("provider").notNull(),
     experience: text("experience").notNull(),
     displayClient: text("display_client").notNull(),

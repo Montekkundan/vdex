@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { Sandbox } from "@vercel/sandbox";
 import { getSession } from "@/lib/auth/session";
+import { expireWarmPoolEntriesForSandbox } from "@/lib/sandbox/warm-pool";
 
 export async function POST(
   _req: Request,
@@ -18,6 +19,7 @@ export async function POST(
   try {
     const sandbox = await Sandbox.get({ sandboxId: id });
     const snapshot = await sandbox.snapshot();
+    const expiredPoolEntries = await expireWarmPoolEntriesForSandbox(id);
     return NextResponse.json({
       snapshot: {
         id: snapshot.snapshotId,
@@ -27,6 +29,7 @@ export async function POST(
         createdAt: snapshot.createdAt.toISOString(),
         expiresAt: snapshot.expiresAt.toISOString(),
       },
+      expiredPoolEntries,
     });
   } catch (err) {
     return NextResponse.json(

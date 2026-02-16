@@ -25,6 +25,13 @@ export async function PATCH(
   }
 
   const updates: Record<string, unknown> = { updatedAt: new Date() };
+  if (body.name !== undefined) {
+    const value = typeof body.name === "string" ? body.name.trim() : "";
+    if (!value) {
+      return NextResponse.json({ error: "Policy name cannot be empty" }, { status: 400 });
+    }
+    updates.name = value;
+  }
   if (typeof body.enabled === "boolean") updates.enabled = body.enabled;
   if (body.maxAgeMinutes !== undefined) {
     const value = Number(body.maxAgeMinutes);

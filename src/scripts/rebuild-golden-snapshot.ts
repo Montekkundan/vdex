@@ -58,9 +58,7 @@ try {
 
     // Replenish first so new-snapshot VMs are available before clearing old ones
     const poolResult = await replenishPool();
-    console.log(
-      `  Pool: ${poolResult.created} created, ${poolResult.existing} existing, target ${poolResult.target}`,
-    );
+    console.log(`  Pool entries created: ${poolResult.created}`);
 
     const expiredOld = await expireOldSnapshotVMs();
     if (expiredOld > 0) {

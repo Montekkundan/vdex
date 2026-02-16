@@ -17,7 +17,7 @@ export async function GET() {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const [policies, poolStats] = await Promise.all([
+  const [policies, poolStats, policyRows, expiredEntries] = await Promise.all([
     db
       .select()
       .from(userPoolPolicies)
@@ -31,11 +31,53 @@ export async function GET() {
       })
       .from(warmPool)
       .where(eq(warmPool.userId, session.id)),
+    db
+      .select({
+        policyId: warmPool.policyId,
+        available: count(sql`CASE WHEN ${warmPool.status} = 'available' THEN 1 END`),
+        claimed: count(sql`CASE WHEN ${warmPool.status} = 'claimed' THEN 1 END`),
+      })
+      .from(warmPool)
+      .where(and(eq(warmPool.userId, session.id), sql`${warmPool.policyId} IS NOT NULL`))
+      .groupBy(warmPool.policyId),
+    db
+      .select({
+        id: warmPool.id,
+        policyId: warmPool.policyId,
+        sandboxId: warmPool.sandboxId,
+        snapshotId: warmPool.snapshotId,
+        status: warmPool.status,
+        claimedAt: warmPool.claimedAt,
+        createdAt: warmPool.createdAt,
+      })
+      .from(warmPool)
+      .where(
+        and(
+          eq(warmPool.userId, session.id),
+          eq(warmPool.status, "expired"),
+        ),
+      )
+      .orderBy(sql`${warmPool.createdAt} DESC`)
+      .limit(50),
   ]);
 
+  const policyCountsById = new Map(
+    policyRows.map((row) => [row.policyId, row]),
+  );
+
+  const policiesWithCounts = policies.map((policy) => {
+    const counts = policyCountsById.get(policy.id);
+    return {
+      ...policy,
+      availableCount: Number(counts?.available ?? 0),
+      claimedCount: Number(counts?.claimed ?? 0),
+    };
+  });
+
   return NextResponse.json({
-    policies,
+    policies: policiesWithCounts,
     stats: poolStats[0],
+    expiredEntries,
     limits: POOL_LIMITS,
   });
 }
@@ -86,6 +128,10 @@ export async function POST(req: Request) {
       .where(eq(userPoolPolicies.userId, session.id)),
   ]);
 
+  const requestedName =
+    typeof body.name === "string" ? body.name.trim() : "";
+  const policyName = requestedName || `Policy ${Number(bucketCount) + 1}`;
+
   if (bucketCount >= POOL_LIMITS.maxPoolBucketsPerUser) {
     return NextResponse.json(
       {
@@ -129,6 +175,7 @@ export async function POST(req: Request) {
     .insert(userPoolPolicies)
     .values({
       userId: session.id,
+      name: policyName,
       provider: resolvedProvider.value,
       experience: resolvedExperience.value,
       displayClient: resolvedDisplayClient.value,

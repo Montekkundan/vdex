@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { Sandbox } from "@vercel/sandbox";
 import { getSession } from "@/lib/auth/session";
+import { expireWarmPoolEntriesForSandbox } from "@/lib/sandbox/warm-pool";
 
 export async function POST(
   _req: Request,
@@ -18,7 +19,8 @@ export async function POST(
   try {
     const sandbox = await Sandbox.get({ sandboxId: id });
     await sandbox.stop();
-    return NextResponse.json({ ok: true });
+    const expiredPoolEntries = await expireWarmPoolEntriesForSandbox(id);
+    return NextResponse.json({ ok: true, expiredPoolEntries });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Failed to stop sandbox" },

@@ -8,16 +8,6 @@ import type { SandboxInfo } from "@/types/sandbox";
 import type { DisplayClient, ProviderId, SizeProfileId, WorkspaceExperience } from "@/types/workspace";
 import { POOL_LIMITS } from "@/lib/pools/constants";
 import { SIZE_PROFILES } from "@/lib/runtime/profiles";
-
-function readEnvInt(name: string, fallback: number): number {
-  const raw = process.env[name];
-  if (!raw) return fallback;
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) ? parsed : fallback;
-}
-
-const DEFAULT_WARM_POOL_TARGET = process.env.NODE_ENV === "production" ? 15 : 0;
-const WARM_POOL_TARGET = readEnvInt("WARM_POOL_TARGET", DEFAULT_WARM_POOL_TARGET);
 const WARM_VM_MAX_AGE_MS = 45 * 60 * 1000; // 45 min (matches sandbox timeout cap)
 
 export interface ClaimWarmOptions {
@@ -51,7 +41,10 @@ export async function claimWarmVM(options?: ClaimWarmOptions): Promise<SandboxIn
           ? sql`${warmPool.snapshotRefId} = ${options.snapshotRefId}`
           : sql`${warmPool.snapshotRefId} IS NULL`}
       `
-    : sql`1 = 1`;
+    : sql`
+        ${warmPool.userId} IS NULL
+        AND ${warmPool.snapshotRefType} = 'platform_default'
+      `;
 
   // Atomic claim: grab the oldest available VM that isn't stale
   const [claimed] = await db
@@ -101,84 +94,123 @@ export async function claimWarmVM(options?: ClaimWarmOptions): Promise<SandboxIn
 }
 
 /**
- * Replenish the warm pool up to WARM_POOL_TARGET.
- * Creates sandboxes from the golden snapshot with services started.
- * Returns how many were created.
+ * Replenish user policy warm pools.
+ * Returns how many entries were created.
  */
 export async function replenishPool(): Promise<{
   created: number;
-  target: number;
-  existing: number;
+  failed: number;
+  errors: string[];
 }> {
-  if (WARM_POOL_TARGET <= 0) {
-    return { created: 0, target: WARM_POOL_TARGET, existing: 0 };
-  }
+  return replenishUserPolicies();
+}
 
-  const snapshotId = await getGoldenSnapshotId("gui");
-  if (!snapshotId) {
-    return { created: 0, target: WARM_POOL_TARGET, existing: 0 };
-  }
+export async function replenishPoolForUser(userId: string): Promise<{
+  created: number;
+  failed: number;
+  errors: string[];
+}> {
+  return replenishUserPolicies(userId);
+}
 
-  const staleThreshold = new Date(Date.now() - WARM_VM_MAX_AGE_MS);
+export async function replenishPoolForPolicy(
+  userId: string,
+  policyId: string,
+): Promise<{
+  created: number;
+  failed: number;
+  errors: string[];
+}> {
+  return replenishUserPolicies(userId, policyId);
+}
 
-  // Count currently available (non-stale) VMs matching the current snapshot
-  const [{ available }] = await db
-    .select({ available: count() })
+export async function expireWarmPoolEntriesForSandbox(sandboxId: string): Promise<number> {
+  const expired = await db
+    .update(warmPool)
+    .set({ status: "expired", claimStatus: "expired" })
+    .where(
+      and(
+        eq(warmPool.sandboxId, sandboxId),
+        sql`${warmPool.status} IN ('available', 'claimed')`,
+      ),
+    )
+    .returning({ id: warmPool.id });
+
+  return expired.length;
+}
+
+async function expireNonLivePolicyEntries(userId: string, policyId: string) {
+  const entries = await db
+    .select({ id: warmPool.id, sandboxId: warmPool.sandboxId })
     .from(warmPool)
     .where(
       and(
-        eq(warmPool.status, "available"),
-        eq(warmPool.snapshotId, snapshotId),
-        sql`${warmPool.createdAt} > ${staleThreshold}`,
+        eq(warmPool.userId, userId),
+        eq(warmPool.policyId, policyId),
+        sql`${warmPool.status} IN ('available', 'claimed')`,
       ),
     );
 
-  const needed = WARM_POOL_TARGET - available;
-  if (needed <= 0) {
-    return { created: 0, target: WARM_POOL_TARGET, existing: available };
-  }
+  if (entries.length === 0) return 0;
 
-  const CONCURRENCY = 5;
-  let created = 0;
+  const expiredIds: string[] = [];
+  await Promise.all(
+    entries.map(async (entry) => {
+      try {
+        const sandbox = await getSandbox(entry.sandboxId);
+        if (!isLiveSandboxStatus(sandbox.status)) {
+          expiredIds.push(entry.id);
+        }
+      } catch {
+        expiredIds.push(entry.id);
+      }
+    }),
+  );
 
-  for (let i = 0; i < needed; i += CONCURRENCY) {
-    const batch = Array.from({ length: Math.min(CONCURRENCY, needed - i) }, () =>
-      createSandbox(snapshotId)
-        .then(async (sandbox) => {
-          await db.insert(warmPool).values({
-            sandboxId: sandbox.sandboxId,
-            snapshotId,
-            status: "available",
-            claimStatus: "ready",
-            provider: "vercel",
-            experience: "gui",
-            displayClient: "webrtc",
-            sizeProfile: "balanced_4c8g",
-            snapshotRefType: "platform_default",
-          });
-          created++;
-        })
-        .catch((err) => {
-          console.error("[warm-pool] Failed to create warm VM:", err);
-        }),
-    );
-    await Promise.all(batch);
-  }
+  if (expiredIds.length === 0) return 0;
 
-  const policyCreated = await replenishUserPolicies();
-  return { created: created + policyCreated, target: WARM_POOL_TARGET, existing: available };
+  const expired = await db
+    .update(warmPool)
+    .set({ status: "expired", claimStatus: "expired" })
+    .where(sql`${warmPool.id} = ANY(${expiredIds})`)
+    .returning({ id: warmPool.id });
+
+  return expired.length;
 }
 
-async function replenishUserPolicies(): Promise<number> {
+async function replenishUserPolicies(userId?: string, policyId?: string): Promise<{
+  created: number;
+  failed: number;
+  errors: string[];
+}> {
   const policies = await db
     .select()
     .from(userPoolPolicies)
-    .where(and(eq(userPoolPolicies.enabled, true), sql`${userPoolPolicies.target} > 0`));
+    .where(
+      userId && policyId
+        ? and(
+            eq(userPoolPolicies.enabled, true),
+            sql`${userPoolPolicies.target} > 0`,
+            eq(userPoolPolicies.userId, userId),
+            eq(userPoolPolicies.id, policyId),
+          )
+        : userId
+        ? and(
+            eq(userPoolPolicies.enabled, true),
+            sql`${userPoolPolicies.target} > 0`,
+            eq(userPoolPolicies.userId, userId),
+          )
+        : and(eq(userPoolPolicies.enabled, true), sql`${userPoolPolicies.target} > 0`),
+    );
 
-  if (policies.length === 0) return 0;
+  if (policies.length === 0) return { created: 0, failed: 0, errors: [] };
 
   let created = 0;
+  let failed = 0;
+  const errors: string[] = [];
   for (const policy of policies) {
+    await expireNonLivePolicyEntries(policy.userId, policy.id);
+
     const staleThreshold = new Date(
       Date.now() - policy.maxAgeMinutes * 60 * 1000,
     );
@@ -263,12 +295,14 @@ async function replenishUserPolicies(): Promise<number> {
         });
         created++;
       } catch (err) {
+        failed += 1;
+        errors.push(err instanceof Error ? err.message : "Failed to create warm pool VM");
         console.error("[warm-pool] Failed to create user pool VM:", err);
       }
     }
   }
 
-  return created;
+  return { created, failed, errors };
 }
 
 /**
@@ -340,9 +374,5 @@ export async function getPoolStats() {
     db.select({ total: count() }).from(warmPool),
   ]);
 
-  return { available, total, target: WARM_POOL_TARGET };
-}
-
-export function getWarmPoolTarget(): number {
-  return WARM_POOL_TARGET;
+  return { available, total };
 }
