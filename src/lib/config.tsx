@@ -27,9 +27,7 @@ export const siteConfig = {
   links: {
     email: "montekkundan@gmail.com",
     twitter: "https://x.com/montekkundan",
-    discord: "https://discord.gg/montekkundan",
-    github: "https://github.com/montekkundan",
-    instagram: "https://instagram.com/montekkundan",
+    github: "https://github.com/Montekkundan/vdex",
   },
   hero: {
     title: "Vdesk",
