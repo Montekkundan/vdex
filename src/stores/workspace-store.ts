@@ -161,7 +161,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   setActiveWorkspace: (id) => {
     set({ activeWorkspaceId: id });
     try {
-      localStorage.setItem("vdesk:last-workspace", id);
+      localStorage.setItem("vdex:last-workspace", id);
     } catch {}
   },
 
@@ -225,7 +225,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         creatingError: null,
       }));
       try {
-        localStorage.setItem("vdesk:last-workspace", workspace.id);
+        localStorage.setItem("vdex:last-workspace", workspace.id);
       } catch {}
       void mutateWorkspaces();
       return workspace;

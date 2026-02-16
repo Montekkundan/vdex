@@ -149,7 +149,7 @@ function useDocumentTitle() {
   });
 
   useEffect(() => {
-    document.title = name ? `${name} \u2014 vdesk` : "vdesk";
+    document.title = name ? `${name} \u2014 vdex` : "vdex";
   }, [name]);
 }
 
@@ -398,7 +398,7 @@ export function DesktopShell({
     if (!currentActive) {
       let lastId: string | null = null;
       try {
-        lastId = localStorage.getItem("vdesk:last-workspace");
+        lastId = localStorage.getItem("vdex:last-workspace");
       } catch {}
 
       const lastUsed = lastId ? workspaces.find((w) => w.id === lastId) : null;

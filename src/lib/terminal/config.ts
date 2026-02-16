@@ -1,4 +1,4 @@
-export const TERMINAL_SETTINGS_STORAGE_PREFIX = "vdesk:terminal-settings:";
+export const TERMINAL_SETTINGS_STORAGE_PREFIX = "vdex:terminal-settings:";
 
 export type TerminalFontPreset = "geist_mono" | "jetbrains_mono";
 

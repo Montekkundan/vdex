@@ -26,7 +26,7 @@ export default function OpenGraphImage() {
         <div style={{ fontSize: 36, opacity: 0.9 }}>vdex.cloud</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <div style={{ fontSize: 88, fontWeight: 700, letterSpacing: -2 }}>
-            vdesk
+            vdex
           </div>
           <div style={{ fontSize: 38, opacity: 0.9 }}>
             Cloud Workspace Desktop

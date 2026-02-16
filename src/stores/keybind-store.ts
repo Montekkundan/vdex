@@ -2,7 +2,7 @@ import { create } from "zustand";
 import type { KeyCombo, ShortcutDefinition } from "@/lib/keyboard/types";
 import { DEFAULT_SHORTCUTS } from "@/lib/keyboard/defaults";
 
-const STORAGE_KEY = "vdesk:keybinds";
+const STORAGE_KEY = "vdex:keybinds";
 
 interface KeybindStore {
   overrides: Record<string, KeyCombo | null>;

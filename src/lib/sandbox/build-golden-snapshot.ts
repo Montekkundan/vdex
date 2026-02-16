@@ -112,7 +112,7 @@ XPRACSP
 # Disable fake Xinerama -- libfakeXinerama is not available on Amazon Linux 2023
 # and the single-display sandbox doesn't need multi-monitor emulation.
 # Without this, Xpra sets LD_PRELOAD to a nonexistent .so, causing warnings.
-sudo tee /etc/xpra/conf.d/99_vdesk.conf > /dev/null << 'XPRACONF'
+sudo tee /etc/xpra/conf.d/99_vdex.conf > /dev/null << 'XPRACONF'
 fake-xinerama=no
 XPRACONF
 
@@ -124,7 +124,7 @@ XWRAPEOF
 
 sudo tee /etc/profile.d/sandbox-display.sh > /dev/null << 'PROFILEEOF'
 export DISPLAY=${XPRA_DISPLAY}
-export DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/vdesk-dbus
+export DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/vdex-dbus
 export GIO_USE_SYSTEMD=0
 PROFILEEOF
 
@@ -273,17 +273,17 @@ if ! command -v google-chrome-stable >/dev/null 2>&1; then
 fi
 
 # Unified lightweight launcher used by desktop shortcuts and app launcher.
-sudo tee /usr/local/bin/vdesk-browser > /dev/null << 'BROWSEREOF'
+sudo tee /usr/local/bin/vdex-browser > /dev/null << 'BROWSEREOF'
 #!/usr/bin/env bash
 set -euo pipefail
 
 URL="\${1:-about:blank}"
-mkdir -p "$HOME/.config/vdesk-browser"
+mkdir -p "$HOME/.config/vdex-browser"
 
 if command -v google-chrome-stable >/dev/null 2>&1; then
   google-chrome-stable \
     --ozone-platform=x11 \
-    --user-data-dir="$HOME/.config/vdesk-browser" \
+    --user-data-dir="$HOME/.config/vdex-browser" \
     --no-sandbox \
     --disable-setuid-sandbox \
     --disable-dev-shm-usage \
@@ -308,22 +308,22 @@ echo "No supported browser is installed (google-chrome-stable/firefox)." >&2
 exit 1
 BROWSEREOF
 
-sudo chmod +x /usr/local/bin/vdesk-browser
+sudo chmod +x /usr/local/bin/vdex-browser
 
 # Make browser app discoverable for desktop scans.
 mkdir -p "$HOME/.local/share/applications"
-cat > "$HOME/.local/share/applications/vdesk-browser.desktop" << 'BROWSERDESKTOPEOF'
+cat > "$HOME/.local/share/applications/vdex-browser.desktop" << 'BROWSERDESKTOPEOF'
 [Desktop Entry]
 Name=Browser
-Comment=Lightweight browser launcher for vdesk
-Exec=vdesk-browser
+Comment=Lightweight browser launcher for vdex
+Exec=vdex-browser
 Icon=google-chrome
 Type=Application
 Categories=Network;WebBrowser;
 BROWSERDESKTOPEOF
 
 if ! command -v google-chrome-stable >/dev/null 2>&1 && command -v firefox >/dev/null 2>&1; then
-  sed -i 's/^Icon=.*/Icon=firefox/' "$HOME/.local/share/applications/vdesk-browser.desktop"
+  sed -i 's/^Icon=.*/Icon=firefox/' "$HOME/.local/share/applications/vdex-browser.desktop"
 fi
 
 echo "Browser setup done"
@@ -505,7 +505,7 @@ echo "  vnc backend: $VNC_BIN"
           },
           {
             path: `${SERVICE_DIR}/package.json`,
-            content: Buffer.from('{"name":"vdesk-services","private":true}'),
+            content: Buffer.from('{"name":"vdex-services","private":true}'),
           },
           {
             path: `${SERVICE_DIR}/ecosystem.config.js`,
@@ -547,7 +547,7 @@ echo "  vnc backend: $VNC_BIN"
             path: `${HOME}/WELCOME.md`,
             content: Buffer.from(
               [
-                "# Welcome to vdesk (CLI)",
+                "# Welcome to vdex (CLI)",
                 "",
                 "This workspace is configured as CLI-only.",
                 "Use the Terminal app to work inside the VM.",
@@ -708,7 +708,7 @@ echo "  vnc backend: $VNC_BIN"
         },
         {
           path: `${SERVICE_DIR}/package.json`,
-          content: Buffer.from('{"name":"vdesk-services","private":true}'),
+          content: Buffer.from('{"name":"vdex-services","private":true}'),
         },
         {
           path: `${SERVICE_DIR}/ecosystem.config.js`,
@@ -786,7 +786,7 @@ echo "  vnc backend: $VNC_BIN"
           path: `${HOME}/WELCOME.md`,
           content: Buffer.from(
             [
-              "# Welcome to vdesk",
+              "# Welcome to vdex",
               "",
               "You're running a full Linux desktop in the cloud, streamed to your browser.",
               "",
@@ -856,7 +856,7 @@ echo "  vnc backend: $VNC_BIN"
               "[Desktop Entry]",
               "Name=Browser",
               "Comment=Web browser",
-              "Exec=vdesk-browser",
+              "Exec=vdex-browser",
               "Icon=google-chrome",
               "Type=Application",
               "Categories=Network;WebBrowser;",

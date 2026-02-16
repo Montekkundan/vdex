@@ -11,13 +11,13 @@ import {
 export const BLUR_FADE_DELAY = 0.15;
 
 export const siteConfig = {
-  name: "Vdesk",
+  name: "Vdex",
   description:
     "A browser desktop for user-owned Vercel Sandbox workspaces with built-in tools and streamed Linux GUI apps.",
   cta: "Get Started",
   url: process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
   keywords: [
-    "Vdesk",
+    "Vdex",
     "Vercel Sandbox",
     "Browser Desktop",
     "Workspace VM",
@@ -30,7 +30,7 @@ export const siteConfig = {
     github: "https://github.com/Montekkundan/vdex",
   },
   hero: {
-    title: "Vdesk",
+    title: "Vdex",
     description:
       "Run a full browser desktop on top of your Vercel Sandbox: manage files, open terminals, use code-server, and stream Linux GUI apps.",
     cta: "Get Started",
@@ -85,7 +85,7 @@ export const siteConfig = {
         url: "https://x.com/montekkundan",
       },
     ],
-    brandText: "VDESK",
+    brandText: "VDEX",
   },
 };
 

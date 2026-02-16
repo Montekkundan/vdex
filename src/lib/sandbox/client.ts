@@ -206,7 +206,7 @@ async function bootstrapSandbox(
   });
   await sandbox.writeFiles([
     { path: `${SERVICE_DIR}/service.js`, content: Buffer.from(getServiceCode()) },
-    { path: `${SERVICE_DIR}/package.json`, content: Buffer.from('{"name":"vdesk-services","private":true}') },
+    { path: `${SERVICE_DIR}/package.json`, content: Buffer.from('{"name":"vdex-services","private":true}') },
     { path: `${SERVICE_DIR}/ecosystem.config.js`, content: Buffer.from(getEcosystemConfig()) },
     { path: `${SERVICE_DIR}/display-start.sh`, content: Buffer.from(getDisplayStartScript()) },
     { path: `${SERVICE_DIR}/cli-display-start.sh`, content: Buffer.from(getCliDisplayStartScript()) },

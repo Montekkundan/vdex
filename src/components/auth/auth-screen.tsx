@@ -55,7 +55,7 @@ export function AuthScreen({
   return (
     <main className="flex min-h-screen items-center justify-center bg-background-100">
       <div className="w-full max-w-sm p-8 material-medium">
-        <h1 className="text-heading-24 text-gray-1000 mb-1">vdesk</h1>
+        <h1 className="text-heading-24 text-gray-1000 mb-1">vdex</h1>
         <p className="text-label-14 text-gray-900 mb-6">
           Sign in to your desktop
         </p>

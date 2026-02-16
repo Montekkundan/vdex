@@ -1,7 +1,7 @@
 import { PORTS } from "./ports";
 
-// All vdesk services live under /opt/vdesk/ to stay out of $HOME
-export const SERVICE_DIR = "/opt/vdesk";
+// All vdex services live under /opt/vdex/ to stay out of $HOME
+export const SERVICE_DIR = "/opt/vdex";
 
 // Xpra display number - use :10 to avoid low display warnings
 export const XPRA_DISPLAY = ":10";
@@ -9,13 +9,13 @@ export const VNC_DISPLAY = ":11";
 export const KASM_DISPLAY = ":12";
 export const RDP_DISPLAY = ":13";
 
-// Well-known D-Bus session bus socket path used by all vdesk processes.
+// Well-known D-Bus session bus socket path used by all vdex processes.
 // dbus-daemon is started by the Xpra wrapper and writes its address here.
-export const DBUS_SOCKET_PATH = "/tmp/vdesk-dbus";
+export const DBUS_SOCKET_PATH = "/tmp/vdex-dbus";
 
 // Shared file where the sandbox bridge writes notification/settings state.
 // The Node.js sandbox service reads this to serve /bridge/* API routes.
-export const BRIDGE_STATE_PATH = "/tmp/vdesk-bridge.json";
+export const BRIDGE_STATE_PATH = "/tmp/vdex-bridge.json";
 
 export function getEcosystemConfig(): string {
   const displayStartScript = `${SERVICE_DIR}/display-start.sh`;
@@ -25,7 +25,7 @@ export function getEcosystemConfig(): string {
 module.exports = {
   apps: [
     {
-      name: "vdesk-svc",
+      name: "vdex-svc",
       script: "${SERVICE_DIR}/service.js",
       cwd: "${SERVICE_DIR}",
       watch: false,
@@ -105,7 +105,7 @@ module.exports = {
 export function getSandboxBridgeScript(): string {
   return `#!/usr/bin/env python3
 """
-vdesk sandbox bridge daemon.
+vdex sandbox bridge daemon.
 
 Bridges D-Bus services and monitors .desktop files, communicating with the
 browser via a shared JSON state file that the Node.js sandbox service reads.
@@ -128,7 +128,7 @@ import dbus.service
 import dbus.mainloop.glib
 from gi.repository import GLib
 
-STATE_PATH = os.environ.get("BRIDGE_STATE_PATH", "/tmp/vdesk-bridge.json")
+STATE_PATH = os.environ.get("BRIDGE_STATE_PATH", "/tmp/vdex-bridge.json")
 LOCK_PATH = STATE_PATH + ".lock"
 
 # ---- Shared state ----
@@ -290,7 +290,7 @@ class NotificationDaemon(dbus.service.Object):
     @dbus.service.method("org.freedesktop.Notifications",
                          in_signature="", out_signature="ssss")
     def GetServerInformation(self):
-        return ("vdesk-bridge", "vdesk", "1.0", "1.2")
+        return ("vdex-bridge", "vdex", "1.0", "1.2")
 
     @dbus.service.signal("org.freedesktop.Notifications",
                          signature="uu")
@@ -648,7 +648,7 @@ elif command -v twm >/dev/null 2>&1; then
   DISPLAY=${VNC_DISPLAY} twm >/tmp/twm.log 2>&1 &
 fi
 if command -v xterm >/dev/null 2>&1; then
-  DISPLAY=${VNC_DISPLAY} xterm -geometry 120x34+40+40 -title "vdesk Terminal" >/tmp/xterm.log 2>&1 &
+  DISPLAY=${VNC_DISPLAY} xterm -geometry 120x34+40+40 -title "vdex Terminal" >/tmp/xterm.log 2>&1 &
 fi
 
 python3 -m websockify --web="$WEB_ROOT" ${PORTS.DISPLAY} localhost:5901 &
@@ -710,7 +710,7 @@ elif command -v twm >/dev/null 2>&1; then
   DISPLAY=${VNC_DISPLAY} twm >/tmp/twm.log 2>&1 &
 fi
 if command -v xterm >/dev/null 2>&1; then
-  DISPLAY=${VNC_DISPLAY} xterm -geometry 120x34+40+40 -title "vdesk Terminal" >/tmp/xterm.log 2>&1 &
+  DISPLAY=${VNC_DISPLAY} xterm -geometry 120x34+40+40 -title "vdex Terminal" >/tmp/xterm.log 2>&1 &
 fi
 
 # Browser bridge for the web app surface
@@ -786,7 +786,7 @@ elif command -v twm >/dev/null 2>&1; then
   DISPLAY=${KASM_DISPLAY} twm >/tmp/twm.log 2>&1 &
 fi
 if command -v xterm >/dev/null 2>&1; then
-  DISPLAY=${KASM_DISPLAY} xterm -geometry 120x34+40+40 -title "vdesk Terminal" >/tmp/xterm.log 2>&1 &
+  DISPLAY=${KASM_DISPLAY} xterm -geometry 120x34+40+40 -title "vdex Terminal" >/tmp/xterm.log 2>&1 &
 fi
 python3 -m websockify --web="$WEB_ROOT" ${PORTS.DISPLAY} localhost:5902 &
 WS_PID=$!
@@ -853,7 +853,7 @@ elif command -v twm >/dev/null 2>&1; then
   DISPLAY=${RDP_DISPLAY} twm >/tmp/twm.log 2>&1 &
 fi
 if command -v xterm >/dev/null 2>&1; then
-  DISPLAY=${RDP_DISPLAY} xterm -geometry 120x34+40+40 -title "vdesk Terminal" >/tmp/xterm.log 2>&1 &
+  DISPLAY=${RDP_DISPLAY} xterm -geometry 120x34+40+40 -title "vdex Terminal" >/tmp/xterm.log 2>&1 &
 fi
 
 python3 -m websockify --web="$WEB_ROOT" ${PORTS.DISPLAY} localhost:5903 &
@@ -903,7 +903,7 @@ export function getCliDisplayStartScript(): string {
   return `#!/bin/bash
 set -euo pipefail
 
-WEB_ROOT="/tmp/vdesk-cli-display"
+WEB_ROOT="/tmp/vdex-cli-display"
 mkdir -p "$WEB_ROOT"
 cat > "$WEB_ROOT/index.html" << 'EOF'
 <!doctype html>
@@ -911,10 +911,10 @@ cat > "$WEB_ROOT/index.html" << 'EOF'
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>vdesk CLI</title>
+  <title>vdex CLI</title>
 </head>
 <body style="font-family: ui-sans-serif, system-ui; margin: 2rem;">
-  <h1>vdesk CLI workspace</h1>
+  <h1>vdex CLI workspace</h1>
   <p>This workspace is configured as CLI-only.</p>
 </body>
 </html>

@@ -65,7 +65,7 @@ export function XpraConnector() {
     return () => window.removeEventListener("mousemove", handleMouseMove);
   }, [xpraConnected, sendGlobalPointerPosition]);
 
-  // Sync Xpra windows -> vdesk windows (new/removed X11 windows)
+  // Sync Xpra windows -> vdex windows (new/removed X11 windows)
   useEffect(() => {
     if (!xpraConnected) return;
 
@@ -106,7 +106,7 @@ export function XpraConnector() {
       }
     });
 
-    // Xpra closed a window -> close the vdesk window
+    // Xpra closed a window -> close the vdex window
     trackedWidsRef.current.forEach((wid) => {
       if (!currentWids.has(wid)) {
         trackedWidsRef.current.delete(wid);
@@ -118,7 +118,7 @@ export function XpraConnector() {
     });
   }, [xpraConnected, xpraWindows, openWindow, closeWindow]);
 
-  // Sync Xpra window changes -> vdesk windows (title + size)
+  // Sync Xpra window changes -> vdex windows (title + size)
   useEffect(() => {
     if (!xpraConnected) return;
 
@@ -136,7 +136,7 @@ export function XpraConnector() {
           setWindowTitle(match.id, win.title);
         }
 
-        // Xpra app resized itself -> update vdesk window to match
+        // Xpra app resized itself -> update vdex window to match
         if (prev.width !== win.width || prev.height !== win.height) {
           resizeWindow(match.id, {
             width: Math.max(100, win.width),
@@ -149,7 +149,7 @@ export function XpraConnector() {
     return unsubscribe;
   }, [xpraConnected, setWindowTitle, resizeWindow]);
 
-  // Reverse sync: vdesk window closed -> kill the X11 app via Xpra
+  // Reverse sync: vdex window closed -> kill the X11 app via Xpra
   useEffect(() => {
     if (!xpraConnected) return;
 

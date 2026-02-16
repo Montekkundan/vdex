@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-const SESSION_COOKIE = "vdesk_session";
+const SESSION_COOKIE = "vdex_session";
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;

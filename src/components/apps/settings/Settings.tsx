@@ -431,7 +431,7 @@ function AboutTab() {
   return (
     <div className="flex max-w-2xl flex-col gap-8 text-gray-1000">
       <section>
-        <SectionHeader title="vdesk" description="A desktop environment in your browser." />
+        <SectionHeader title="vdex" description="A desktop environment in your browser." />
         <PropertyPanel className="rounded-lg border border-gray-alpha-200">
           <PropertyPanel.Section>
             <PropertyPanel.Row label="Version">

@@ -15,15 +15,15 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://vdex.cloud";
-const siteName = "vdesk";
+const siteName = "vdex";
 const siteDescription =
   "Cloud workspace desktop for launching apps, managing files, and running development environments from anywhere.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: "vdesk — Cloud Workspace Desktop",
-    template: "%s | vdesk",
+    default: "vdex — Cloud Workspace Desktop",
+    template: "%s | vdex",
   },
   description: siteDescription,
   applicationName: siteName,
@@ -34,20 +34,20 @@ export const metadata: Metadata = {
     type: "website",
     url: "/",
     siteName,
-    title: "vdesk — Cloud Workspace Desktop",
+    title: "vdex — Cloud Workspace Desktop",
     description: siteDescription,
     images: [
       {
         url: "/opengraph-image",
         width: 1200,
         height: 630,
-        alt: "vdesk cloud workspace desktop",
+        alt: "vdex cloud workspace desktop",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "vdesk — Cloud Workspace Desktop",
+    title: "vdex — Cloud Workspace Desktop",
     description: siteDescription,
     images: ["/twitter-image"],
   },

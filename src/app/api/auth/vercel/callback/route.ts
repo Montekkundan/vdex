@@ -7,7 +7,7 @@ import { createSession, getSession } from "@/lib/auth/session";
 
 function getBaseUrl(): string {
   if (process.env.BETTER_AUTH_URL) return process.env.BETTER_AUTH_URL;
-  if (process.env.VERCEL_URL) return "https://vdesk.cloud";
+  if (process.env.VERCEL_URL) return "https://vdex.cloud";
   return "http://localhost:3000";
 }
 

@@ -8,7 +8,7 @@
  * Cache entries expire after 30 minutes to avoid stale content.
  */
 
-const CACHE_PREFIX = "vdesk:terminal:";
+const CACHE_PREFIX = "vdex:terminal:";
 const MAX_AGE_MS = 30 * 60 * 1000; // 30 minutes
 const MAX_STATE_CHARS = 200_000;
 
