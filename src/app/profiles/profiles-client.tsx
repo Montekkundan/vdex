@@ -8,6 +8,7 @@ import {
   createPoolPolicyMutate,
   deletePoolPolicyMutate,
   deleteSnapshotMutate,
+  replenishPoolPoliciesMutate,
   updatePoolPolicyMutate,
   updateSnapshotMutate,
   usePoolPolicies,
@@ -78,11 +79,55 @@ const GUI_APP_TEMPLATES: Array<{ id: string; label: string; script: string }> =
     },
   ];
 
+const GUI_BASE_INCLUDES = [
+  "Xpra + X11",
+  "Browser (Chrome/Firefox)",
+  "Nautilus",
+  "Text Editor",
+  "Calculator",
+  "code-server",
+  "ESLint",
+  "Prettier",
+  "Tailwind",
+  "Volar",
+  "Astro",
+  "Node/npm/pnpm/Bun",
+  "pm2",
+  "Python/pip",
+  "Git",
+  "tmux",
+  "jq",
+  "vim",
+  "Rust/Cargo",
+  "VNC/noVNC/RDP/WebRTC helpers",
+] as const;
+
+const CLI_BASE_INCLUDES = [
+  "Node/npm/pnpm/Bun",
+  "pm2",
+  "Python/pip",
+  "Git",
+  "tmux",
+  "jq",
+  "vim",
+  "tree",
+  "wget",
+  "unzip",
+  "tar",
+  "xz",
+  "Rust/Cargo",
+  "gcc/g++",
+  "make",
+  "OpenSSL + SQLite dev libs",
+  "bridge service files",
+] as const;
+
 export function ProfilesClient() {
   const { snapshots, limits, isLoading: snapshotsLoading } = useSnapshots(true);
   const {
     policies,
     stats,
+    expiredEntries,
     limits: policyLimits,
     isLoading: policiesLoading,
   } = usePoolPolicies(true);
@@ -100,21 +145,31 @@ export function ProfilesClient() {
   const [policyExperience, setPolicyExperience] = useState("gui");
   const [policyDisplayClient] = useState("xpra");
   const [policySizeProfile, setPolicySizeProfile] = useState("balanced_4c8g");
+  const [policyName, setPolicyName] = useState("");
   const [policyTarget, setPolicyTarget] = useState("1");
   const [policySourceType, setPolicySourceType] = useState<
     "platform_default" | "user_snapshot"
   >("platform_default");
   const [policySnapshotRefId, setPolicySnapshotRefId] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [policyActionResult, setPolicyActionResult] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
   const readySnapshots = useMemo(
     () => snapshots.filter((s) => s.status === "ready"),
     [snapshots],
   );
+  const snapshotNameById = useMemo(
+    () => new Map(snapshots.map((snapshot) => [snapshot.id, snapshot.name])),
+    [snapshots],
+  );
   const runningWorkspaces = useMemo(
     () => workspaces.filter((w) => w.status === "active" && !!w.sandboxId),
     [workspaces],
+  );
+  const policyNameById = useMemo(
+    () => new Map(policies.map((policy) => [policy.id, policy.name])),
+    [policies],
   );
 
   async function runWithState(key: string, fn: () => Promise<void>) {
@@ -196,22 +251,38 @@ export function ProfilesClient() {
                     Golden GUI (minimal)
                   </p>
                   <p>
-                    Browser + file manager + terminal stack + runtime
-                    essentials.
+                    Full desktop base with display stack, browser, file tools,
+                    and developer runtime essentials.
                   </p>
-                  <p className="mt-1 text-gray-700">
-                    Includes: Firefox, Nautilus, Text Editor, Calculator,
-                    Node/npm/pnpm/Bun, Python/pip, Git, tmux, jq.
-                  </p>
+                  <div className="mt-2 space-y-2">
+                    <p className="text-gray-700">Includes</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {GUI_BASE_INCLUDES.map((item) => (
+                        <Badge key={item} variant="outline" className="text-copy-11">
+                          {item}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
                 </div>
                 <div className="rounded-md border border-gray-alpha-300 p-3">
                   <p className="font-medium text-gray-1000">
                     Golden CLI (minimal)
                   </p>
-                  <p>CLI-only runtime with bridge and terminal essentials.</p>
-                  <p className="mt-1 text-gray-700">
-                    Includes: Node/npm/pnpm/Bun, Python/pip, Git, tmux, jq, vim.
+                  <p>
+                    CLI-only runtime with sandbox bridge and terminal
+                    essentials.
                   </p>
+                  <div className="mt-2 space-y-2">
+                    <p className="text-gray-700">Includes</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {CLI_BASE_INCLUDES.map((item) => (
+                        <Badge key={item} variant="outline" className="text-copy-11">
+                          {item}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -490,6 +561,11 @@ export function ProfilesClient() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid gap-2 md:grid-cols-3">
+                  <Input
+                    placeholder="Policy title (optional)"
+                    value={policyName}
+                    onChange={(e) => setPolicyName(e.target.value)}
+                  />
                   <Select value={policyProvider} disabled>
                     <SelectTrigger>
                       <SelectValue placeholder="Provider" />
@@ -587,6 +663,7 @@ export function ProfilesClient() {
                   disabled={!!busy}
                   onClick={() =>
                     runWithState("policy-create", async () => {
+                      setPolicyActionResult(null);
                       captureEvent("pool_policy_create_requested", {
                         provider: policyProvider,
                         experience: policyExperience,
@@ -598,6 +675,7 @@ export function ProfilesClient() {
                         snapshotRefType: policySourceType,
                       });
                       await createPoolPolicyMutate({
+                        name: policyName.trim() || undefined,
                         provider: policyProvider,
                         experience: policyExperience,
                         displayClient:
@@ -622,6 +700,7 @@ export function ProfilesClient() {
                             : policyDisplayClient,
                         sizeProfile: policySizeProfile,
                       });
+                      setPolicyName("");
                     })
                   }
                 >
@@ -631,6 +710,31 @@ export function ProfilesClient() {
                     "Create policy"
                   )}
                 </Button>
+                <Button
+                  variant="secondary"
+                  disabled={!!busy}
+                  onClick={() =>
+                    runWithState("policy-replenish", async () => {
+                      setPolicyActionResult(null);
+                      const result = await replenishPoolPoliciesMutate();
+                      const errorHint = result.errors.length > 0
+                        ? ` First error: ${result.errors[0]}`
+                        : "";
+                      setPolicyActionResult(
+                        `Replenish all complete: ${result.created} created, ${result.failed} failed.${errorHint}`,
+                      );
+                    })
+                  }
+                >
+                  {busy === "policy-replenish" ? (
+                    <Spinner className="size-3.5" />
+                  ) : (
+                    "Replenish all"
+                  )}
+                </Button>
+                {policyActionResult ? (
+                  <p className="text-copy-12 text-gray-700">{policyActionResult}</p>
+                ) : null}
 
                 <div className="space-y-2">
                   {policies.map((policy) => (
@@ -640,14 +744,34 @@ export function ProfilesClient() {
                     >
                       <div>
                         <p className="text-copy-14 font-medium text-gray-1000">
-                          {policy.provider} · {policy.experience} ·{" "}
-                          {policy.displayClient} · {policy.sizeProfile}
+                          {policy.name}
                         </p>
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                          <Badge variant="outline">
+                            {PROVIDERS[policy.provider as keyof typeof PROVIDERS]?.label ?? policy.provider}
+                          </Badge>
+                          <Badge variant="outline">
+                            {EXPERIENCES[policy.experience as keyof typeof EXPERIENCES]?.label ?? policy.experience}
+                          </Badge>
+                          <Badge variant="outline">
+                            {DISPLAY_CLIENTS[policy.displayClient as keyof typeof DISPLAY_CLIENTS]?.label ?? policy.displayClient}
+                          </Badge>
+                          <Badge variant="outline">
+                            {SIZE_PROFILES[policy.sizeProfile as keyof typeof SIZE_PROFILES]?.label ?? policy.sizeProfile}
+                          </Badge>
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                          <Badge variant="outline">
+                            source={policy.snapshotRefType}
+                          </Badge>
+                          {policy.snapshotRefId ? (
+                            <Badge variant="outline">
+                              {snapshotNameById.get(policy.snapshotRefId) ?? `${policy.snapshotRefId.slice(0, 8)}...`}
+                            </Badge>
+                          ) : null}
+                        </div>
                         <p className="text-copy-12 text-gray-700">
-                          source={policy.snapshotRefType}
-                          {policy.snapshotRefId
-                            ? ` (${policy.snapshotRefId.slice(0, 8)}...)`
-                            : ""}
+                          available={policy.availableCount} · claimed={policy.claimedCount}
                         </p>
                       </div>
                       <div className="flex items-center gap-2">
@@ -677,6 +801,29 @@ export function ProfilesClient() {
                             );
                           }}
                         />
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          disabled={!!busy}
+                          onClick={() =>
+                            runWithState(`policy-replenish-${policy.id}`, async () => {
+                              setPolicyActionResult(null);
+                              const result = await replenishPoolPoliciesMutate(policy.id);
+                              const errorHint = result.errors.length > 0
+                                ? ` First error: ${result.errors[0]}`
+                                : "";
+                              setPolicyActionResult(
+                                `${policy.name}: ${result.created} created, ${result.failed} failed.${errorHint}`,
+                              );
+                            })
+                          }
+                        >
+                          {busy === `policy-replenish-${policy.id}` ? (
+                            <Spinner className="size-3.5" />
+                          ) : (
+                            "Replenish"
+                          )}
+                        </Button>
                         <Button
                           size="sm"
                           variant="secondary"
@@ -732,6 +879,46 @@ export function ProfilesClient() {
                     </p>
                   ) : null}
                 </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Expired Warm Entries</CardTitle>
+                <CardDescription>
+                  Latest expired entries for your policies.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {expiredEntries.length === 0 ? (
+                  <p className="text-copy-13 text-gray-700">No expired entries.</p>
+                ) : (
+                  expiredEntries.map((entry) => (
+                    <div
+                      key={entry.id}
+                      className="rounded-md border border-gray-alpha-300 p-3"
+                    >
+                      <p className="text-copy-14 font-medium text-gray-1000">
+                        {policyNameById.get(entry.policyId ?? "") ?? "Unassigned policy"}
+                      </p>
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                        <Badge variant="outline">{entry.status}</Badge>
+                        <Badge variant="outline">sandbox {entry.sandboxId.slice(0, 16)}...</Badge>
+                        <Badge variant="outline">snapshot {entry.snapshotId.slice(0, 12)}...</Badge>
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                        <Badge variant="outline">
+                          created {new Date(entry.createdAt).toLocaleString()}
+                        </Badge>
+                        <Badge variant="outline">
+                          {entry.claimedAt
+                            ? `claimed ${new Date(entry.claimedAt).toLocaleString()}`
+                            : "claimed --"}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))
+                )}
               </CardContent>
             </Card>
           </div>

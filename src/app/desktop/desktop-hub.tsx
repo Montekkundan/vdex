@@ -4,11 +4,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { ColumnDef } from "@tanstack/react-table";
-import { mutateWorkspaces, useSnapshots, useWorkspaces } from "@/lib/hooks/use-swr-hooks";
+import { mutateWorkspaces, usePoolPolicies, useSnapshots, useWorkspaces } from "@/lib/hooks/use-swr-hooks";
 import { DISPLAY_CLIENTS, EXPERIENCES, PROVIDERS, SIZE_PROFILES } from "@/lib/runtime/profiles";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 import { slugify } from "@/lib/workspace-slug";
 import { Button } from "@/components/ui/button";
+import { ButtonGroup } from "@/components/ui/button-group";
 import { Spinner } from "@/components/ui/spinner";
 import { WorkspaceIcon } from "@/components/workspace-icon";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,6 +25,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { MainDataTable } from "@/components/ui/main-data-table";
 import { captureEvent } from "@/lib/observability/client";
 import {
@@ -43,6 +50,7 @@ import {
   type WorkspaceExperience,
   WORKSPACE_ICON_NAMES,
 } from "@/types/workspace";
+import { ChevronDownIcon } from "lucide-react";
 
 const STATUS_STYLE: Record<string, string> = {
   active: "bg-green-100 text-green-900 border border-green-300",
@@ -56,6 +64,7 @@ export function DesktopHub() {
   const router = useRouter();
   const { workspaces, isLoading } = useWorkspaces(true);
   const { snapshots } = useSnapshots(true);
+  const { policies } = usePoolPolicies(true);
   const createWorkspace = useWorkspaceStore((s) => s.createWorkspace);
   const restartWorkspace = useWorkspaceStore((s) => s.restartWorkspace);
   const stopWorkspace = useWorkspaceStore((s) => s.stopWorkspace);
@@ -72,6 +81,10 @@ export function DesktopHub() {
     "platform_default" | "user_snapshot"
   >("platform_default");
   const [newWorkspaceSnapshotRefId, setNewWorkspaceSnapshotRefId] = useState("");
+  const [warmPoolDialogOpen, setWarmPoolDialogOpen] = useState(false);
+  const [selectedWarmPolicyId, setSelectedWarmPolicyId] = useState("");
+  const [warmPoolWorkspaceName, setWarmPoolWorkspaceName] = useState("");
+  const [creatingFromWarmPool, setCreatingFromWarmPool] = useState(false);
   const [shutdownWorkspace, setShutdownWorkspace] = useState<{ id: string; name: string } | null>(null);
   const [shutdownWithSnapshot, setShutdownWithSnapshot] = useState(false);
   const [shutdownWithoutSnapshot, setShutdownWithoutSnapshot] = useState(false);
@@ -113,6 +126,20 @@ export function DesktopHub() {
     }
     return next;
   }, [snapshots]);
+
+  const availableWarmPolicies = useMemo(
+    () =>
+      policies.filter(
+        (policy) =>
+          policy.enabled &&
+          policy.availableCount > 0,
+      ),
+    [policies],
+  );
+  const selectedWarmPolicy = useMemo(
+    () => availableWarmPolicies.find((policy) => policy.id === selectedWarmPolicyId) ?? null,
+    [availableWarmPolicies, selectedWarmPolicyId],
+  );
 
   const mergedWorkspaces = useMemo(() => {
     // Hide optimistic placeholders once the real server workspace row appears.
@@ -339,6 +366,62 @@ export function DesktopHub() {
     setNewWorkspaceSizeProfile("small_2c4g");
     setNewWorkspaceSnapshotSource("platform_default");
     setNewWorkspaceSnapshotRefId("");
+  }
+
+  async function handleCreateFromWarmPool() {
+    if (!selectedWarmPolicy) return;
+    const startedAt = Date.now();
+    const payload = {
+      name: warmPoolWorkspaceName.trim() || undefined,
+      icon: "terminal",
+      provider: selectedWarmPolicy.provider as ProviderId,
+      experience: selectedWarmPolicy.experience as WorkspaceExperience,
+      displayClient: selectedWarmPolicy.displayClient as DisplayClient,
+      sizeProfile: selectedWarmPolicy.sizeProfile as SizeProfileId,
+      snapshotSource: selectedWarmPolicy.snapshotRefType,
+      snapshotRefId:
+        selectedWarmPolicy.snapshotRefType === "user_snapshot"
+          ? selectedWarmPolicy.snapshotRefId ?? undefined
+          : undefined,
+    } as const;
+
+    setCreatingFromWarmPool(true);
+    setActionError(null);
+    captureEvent("workspace_create_requested", {
+      ...payload,
+      warmPolicyId: selectedWarmPolicy.id,
+      path: "warm_pool_dialog",
+    });
+
+    try {
+      const workspace = await createWorkspace(payload);
+      captureEvent("workspace_create_succeeded", {
+        workspaceId: workspace.id,
+        provider: workspace.provider,
+        experience: workspace.experience,
+        displayClient: workspace.displayClient,
+        sizeProfile: workspace.sizeProfile,
+        warmPolicyId: selectedWarmPolicy.id,
+        path: "warm_pool_dialog",
+        latencyMs: Date.now() - startedAt,
+      });
+      setWarmPoolDialogOpen(false);
+      setSelectedWarmPolicyId("");
+      setWarmPoolWorkspaceName("");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to create workspace";
+      setActionError(message);
+      captureEvent("workspace_create_failed", {
+        ...payload,
+        warmPolicyId: selectedWarmPolicy.id,
+        path: "warm_pool_dialog",
+        errorCode: "create_failed",
+        errorMessage: message,
+        latencyMs: Date.now() - startedAt,
+      });
+    } finally {
+      setCreatingFromWarmPool(false);
+    }
   }
 
   async function handleCreate() {
@@ -602,9 +685,30 @@ export function DesktopHub() {
                   <Button asChild variant="secondary">
                     <Link href="/sandboxes">Sandboxes</Link>
                   </Button>
-                  <Button onClick={() => setCreateDialogOpen(true)}>
-                    New VM
-                  </Button>
+                  <ButtonGroup>
+                    <Button onClick={() => setCreateDialogOpen(true)}>New VM</Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button className="px-2" aria-label="More create options">
+                          <ChevronDownIcon className="size-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-56">
+                        <DropdownMenuItem
+                          disabled={availableWarmPolicies.length === 0}
+                          onSelect={() => {
+                            if (availableWarmPolicies.length === 0) return;
+                            setSelectedWarmPolicyId((prev) =>
+                              prev || availableWarmPolicies[0]?.id || "",
+                            );
+                            setWarmPoolDialogOpen(true);
+                          }}
+                        >
+                          Launch from Warm Pool
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </ButtonGroup>
                 </>
               }
             />
@@ -823,6 +927,101 @@ export function DesktopHub() {
               }
             >
               Create VM
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={warmPoolDialogOpen}
+        onOpenChange={(open) => {
+          setWarmPoolDialogOpen(open);
+          if (!open) {
+            setSelectedWarmPolicyId("");
+            setWarmPoolWorkspaceName("");
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Launch from Warm Pool</DialogTitle>
+            <DialogDescription>
+              Choose an available warm policy and launch instantly with matching profile.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            {availableWarmPolicies.length === 0 ? (
+              <p className="text-copy-13 text-muted-foreground">
+                No available warm policies right now. Replenish a policy first.
+              </p>
+            ) : (
+              <>
+                <div className="space-y-1">
+                  <label className="text-copy-12 text-gray-800">Name (optional)</label>
+                  <Input
+                    value={warmPoolWorkspaceName}
+                    onChange={(event) => setWarmPoolWorkspaceName(event.target.value)}
+                    placeholder="auto-generated"
+                    maxLength={64}
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-copy-12 text-gray-800">Available policy</label>
+                  <Select
+                    value={selectedWarmPolicyId}
+                    onValueChange={setSelectedWarmPolicyId}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select available warm policy" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableWarmPolicies.map((policy) => (
+                        <SelectItem key={policy.id} value={policy.id}>
+                          {policy.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {selectedWarmPolicy ? (
+                  <div className="rounded-md border border-gray-alpha-300 p-3 space-y-2">
+                    <p className="text-copy-13 text-foreground font-medium">{selectedWarmPolicy.name}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      <Badge variant="outline">
+                        {PROVIDERS[selectedWarmPolicy.provider as keyof typeof PROVIDERS]?.label ?? selectedWarmPolicy.provider}
+                      </Badge>
+                      <Badge variant="outline">
+                        {EXPERIENCES[selectedWarmPolicy.experience as keyof typeof EXPERIENCES]?.label ?? selectedWarmPolicy.experience}
+                      </Badge>
+                      <Badge variant="outline">
+                        {DISPLAY_CLIENTS[selectedWarmPolicy.displayClient as keyof typeof DISPLAY_CLIENTS]?.label ?? selectedWarmPolicy.displayClient}
+                      </Badge>
+                      <Badge variant="outline">
+                        {SIZE_PROFILES[selectedWarmPolicy.sizeProfile as keyof typeof SIZE_PROFILES]?.label ?? selectedWarmPolicy.sizeProfile}
+                      </Badge>
+                      <Badge variant="outline">available {selectedWarmPolicy.availableCount}</Badge>
+                    </div>
+                  </div>
+                ) : null}
+              </>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setWarmPoolDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => void handleCreateFromWarmPool()}
+              disabled={!selectedWarmPolicy || creatingFromWarmPool}
+            >
+              {creatingFromWarmPool ? <Spinner className="size-3.5" /> : "Launch VM"}
             </Button>
           </DialogFooter>
         </DialogContent>

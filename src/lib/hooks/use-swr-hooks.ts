@@ -74,6 +74,7 @@ interface SnapshotsResponse {
 export interface UserPoolPolicy {
   id: string;
   userId: string;
+  name: string;
   provider: string;
   experience: string;
   displayClient: string;
@@ -82,6 +83,8 @@ export interface UserPoolPolicy {
   snapshotRefId: string | null;
   target: number;
   enabled: boolean;
+  availableCount: number;
+  claimedCount: number;
   maxAgeMinutes: number;
   createdAt: string;
   updatedAt: string;
@@ -94,6 +97,15 @@ interface PoolPoliciesResponse {
     claimed: number;
     expired: number;
   };
+  expiredEntries: Array<{
+    id: string;
+    policyId: string | null;
+    sandboxId: string;
+    snapshotId: string;
+    status: "expired";
+    claimedAt: string | null;
+    createdAt: string;
+  }>;
   limits: {
     maxSnapshotsPerUser: number;
     maxPoolBucketsPerUser: number;
@@ -152,6 +164,7 @@ export function usePoolPolicies(enabled = true) {
   return {
     policies: data?.policies ?? [],
     stats: data?.stats ?? { available: 0, claimed: 0, expired: 0 },
+    expiredEntries: data?.expiredEntries ?? [],
     limits:
       data?.limits ??
       ({
@@ -172,6 +185,7 @@ export function mutatePoolPolicies() {
 }
 
 export async function createPoolPolicyMutate(payload: {
+  name?: string;
   provider: string;
   experience: string;
   displayClient: string;
@@ -197,7 +211,7 @@ export async function createPoolPolicyMutate(payload: {
 
 export async function updatePoolPolicyMutate(
   id: string,
-  payload: { target?: number; enabled?: boolean; maxAgeMinutes?: number },
+  payload: { name?: string; target?: number; enabled?: boolean; maxAgeMinutes?: number },
 ) {
   const res = await fetch(`/api/pools/policies/${id}`, {
     method: "PATCH",
@@ -221,6 +235,20 @@ export async function deletePoolPolicyMutate(id: string) {
     throw new Error(body.error ?? "Failed to delete pool policy");
   }
   await mutatePoolPolicies();
+}
+
+export async function replenishPoolPoliciesMutate(policyId?: string) {
+  const res = await fetch("/api/pools/policies/replenish", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(policyId ? { policyId } : {}),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(body.error ?? "Failed to replenish warm pool");
+  }
+  await mutatePoolPolicies();
+  return body.result as { created: number; failed: number; errors: string[] };
 }
 
 export async function createSnapshotMutate(payload: {
