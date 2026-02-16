@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { DesktopEntry } from "@/types/desktop-entry";
 import { sandboxServiceFetcher } from "@/lib/hooks/use-sandbox-service-client";
+import { reportDesktopError } from "@/lib/desktop/report-error";
 
 /**
  * Map of app name patterns (lowercase) to Dusk icon SVG filenames.
@@ -172,12 +173,8 @@ export const useDesktopStore = create<DesktopStore>((set) => ({
 
   fetchRemoteApps: async (workspaceId, apiDomain) => {
     try {
-      const isLocalhost =
-        typeof window !== "undefined" &&
-        (window.location.hostname === "localhost" ||
-          window.location.hostname === "127.0.0.1");
       const endpoint =
-        isLocalhost && workspaceId
+        workspaceId
           ? `/api/sandbox/${workspaceId}/service/desktop-entries`
           : `https://${apiDomain}/desktop-entries`;
 
@@ -222,6 +219,14 @@ export const useDesktopStore = create<DesktopStore>((set) => ({
       });
     } catch (err) {
       console.error("Failed to fetch remote apps:", err);
+      reportDesktopError({
+        source: "system",
+        severity: "error",
+        message: "Failed to fetch remote apps",
+        details: err instanceof Error ? err.message : String(err),
+        dedupeKey: "desktop-entries-fetch-failed",
+        workspaceId,
+      });
     }
   },
 }));

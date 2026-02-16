@@ -6,6 +6,7 @@ import {
 } from "@/stores/notification-store";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 import { logDesktop, type DesktopLogScope } from "./logger";
+import { reportClientIncident } from "@/lib/admin/client-incident-reporter";
 
 export type DesktopErrorSource = "terminal" | "files" | "code" | "xpra" | "system";
 export type DesktopErrorSeverity = "info" | "warning" | "error" | "critical";
@@ -86,5 +87,25 @@ export function reportDesktopError(event: DesktopAppErrorEvent): void {
     severity: event.severity,
     workspaceId,
   });
-}
 
+  void reportClientIncident({
+    title: event.message,
+    fingerprintSeed: `${event.source}:${event.message}`,
+    severity:
+      event.severity === "critical"
+        ? "sev1"
+        : event.severity === "error"
+          ? "sev2"
+          : event.severity === "warning"
+            ? "sev3"
+            : "sev4",
+    source: `desktop.${event.source}`,
+    details: event.details,
+    workspaceId,
+    context: {
+      severity: event.severity,
+      category: "desktop.error",
+    },
+    dedupeKey: `desktop-report:${dedupeKey}`,
+  });
+}

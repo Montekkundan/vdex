@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo } from "react";
 import { useActiveSandbox } from "@/stores/workspace-store";
+import { reportDesktopError } from "@/lib/desktop/report-error";
 
 /**
  * Shared error class for sandbox service failures.
@@ -24,7 +25,20 @@ export class SandboxServiceError extends Error {
 export async function sandboxServiceFetcher<T = unknown>(
   url: string,
 ): Promise<T> {
-  const res = await fetch(url);
+  let res: Response;
+  try {
+    res = await fetch(url);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    reportDesktopError({
+      source: "system",
+      severity: "error",
+      message: "Sandbox service request failed",
+      details: `${url} - ${message}`,
+      dedupeKey: `sandbox-service-network:${url}`,
+    });
+    throw error;
+  }
   if (!res.ok) {
     let message = `Sandbox service error (${res.status})`;
     try {
