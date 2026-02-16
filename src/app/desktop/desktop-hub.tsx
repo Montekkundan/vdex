@@ -457,6 +457,8 @@ export function DesktopHub() {
       status: "creating" as const,
       sandboxDomain: null,
       background: null,
+      shareEnabled: false,
+      shareId: null,
       createdAt: nowIso,
       updatedAt: nowIso,
     };

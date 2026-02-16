@@ -31,6 +31,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { Note } from "@/components/ui/note";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -41,12 +42,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Input } from "@/components/ui/input";
 import { slugify } from "@/lib/workspace-slug";
 import { useGlobalKeybinds } from "@/lib/keyboard/use-global-keybinds";
 import { WindowSwitcher } from "@/components/desktop/WindowSwitcher";
 import type { SandboxInfo } from "@/types/sandbox";
 import { TerminalApp } from "@/components/apps/terminal/TerminalApp";
-import { Settings2 } from "lucide-react";
+import { reportDesktopError } from "@/lib/desktop/report-error";
+import { Settings2, Share2 } from "lucide-react";
 import { TerminalSettingsDialog } from "@/components/apps/terminal/TerminalSettingsDialog";
 import {
   DEFAULT_TERMINAL_SETTINGS,
@@ -154,12 +157,13 @@ function useDocumentTitle() {
 }
 
 /** Sync the URL to /desktop/<slug> when the active workspace changes. */
-function useUrlSync() {
+function useUrlSync(enabled = true) {
   const activeWorkspace = useWorkspaceStore((s) =>
     s.workspaces.find((w) => w.id === s.activeWorkspaceId),
   );
 
   useEffect(() => {
+    if (!enabled) return;
     if (!activeWorkspace) return;
     const slug = slugify(activeWorkspace.name);
     if (!slug) return;
@@ -199,7 +203,7 @@ export function DesktopShell({
   const sandboxes = useWorkspaceStore((s) => s.sandboxes);
 
   useDocumentTitle();
-  useUrlSync();
+  useUrlSync(!strictTargetRoute);
   useSyncSandboxTheme();
   useSandboxHeartbeat();
   useDbusNotifications();
@@ -340,6 +344,11 @@ export function DesktopShell({
   const [shutdownDialogOpen, setShutdownDialogOpen] = useState(false);
   const [shutdownWithSnapshot, setShutdownWithSnapshot] = useState(false);
   const [shutdownWithoutSnapshot, setShutdownWithoutSnapshot] = useState(false);
+  const [sharingWorkspace, setSharingWorkspace] = useState(false);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [shareLink, setShareLink] = useState<string | null>(null);
+  const [shareCopying, setShareCopying] = useState(false);
+  const [shareError, setShareError] = useState<string | null>(null);
   const [cliSettingsOpen, setCliSettingsOpen] = useState(false);
   const [cliSettingsVersion, setCliSettingsVersion] = useState(0);
   const cliActiveSandboxId =
@@ -364,6 +373,21 @@ export function DesktopShell({
     if (match) return null;
     return `Workspace "${decoded}" not found.`;
   }, [strictTargetRoute, targetSlug, workspacesLoading, workspaces]);
+  const strictTargetWorkspace = useMemo(() => {
+    if (!strictTargetRoute || !targetSlug || workspacesLoading) return null;
+    const decoded = decodeURIComponent(targetSlug);
+    return (
+      workspaces.find(
+        (w) => slugify(w.name) === slugify(decoded) || w.id === decoded,
+      ) ?? null
+    );
+  }, [strictTargetRoute, targetSlug, workspacesLoading, workspaces]);
+  const waitingForStrictTarget =
+    strictTargetRoute &&
+    !!targetSlug &&
+    (workspacesLoading ||
+      (!!strictTargetWorkspace &&
+        activeWorkspaceId !== strictTargetWorkspace.id));
 
   useEffect(() => {
     if (workspacesLoading || bootstrappedRef.current) return;
@@ -440,6 +464,61 @@ export function DesktopShell({
     }
     setCliSettingsVersion((v) => v + 1);
   }, [cliActiveSandboxId]);
+
+  const handleShareWorkspace = useCallback(async () => {
+    if (!activeWorkspaceId || sharingWorkspace) return;
+    setSharingWorkspace(true);
+    setShareError(null);
+    try {
+      const res = await fetch(`/api/sandbox/${activeWorkspaceId}/share`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: true }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(body.error ?? "Failed to create share link");
+      }
+
+      const sharePath =
+        typeof body.shareUrl === "string" && body.shareUrl
+          ? body.shareUrl
+          : null;
+      if (!sharePath) {
+        throw new Error("Share URL was not returned");
+      }
+      const fullUrl = `${window.location.origin}${sharePath}`;
+      setShareLink(fullUrl);
+      setShareDialogOpen(true);
+    } catch (err) {
+      const details = err instanceof Error ? err.message : "Unknown error";
+      setShareError(details);
+      reportDesktopError({
+        source: "system",
+        severity: "error",
+        message: "Could not create share link",
+        details,
+        dedupeKey: `share-workspace-${activeWorkspaceId}`,
+        workspaceId: activeWorkspaceId,
+      });
+    } finally {
+      setSharingWorkspace(false);
+    }
+  }, [activeWorkspaceId, sharingWorkspace]);
+
+  const copyShareLink = useCallback(async () => {
+    if (!shareLink || shareCopying) return;
+    setShareCopying(true);
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareLink);
+      } else {
+        window.prompt("Copy share link:", shareLink);
+      }
+    } finally {
+      setShareCopying(false);
+    }
+  }, [shareLink, shareCopying]);
 
   // Strict slug route behavior: when store marks workspace non-active (for example
   // max-lifetime reached), immediately go back to the hub.
@@ -594,6 +673,17 @@ export function DesktopShell({
     );
   }
 
+  if (waitingForStrictTarget) {
+    return (
+      <div
+        className="flex h-screen items-center justify-center bg-background-100"
+        role="status"
+      >
+        <Spinner size="lg" />
+      </div>
+    );
+  }
+
   if (slugError) {
     return (
       <div className="flex h-screen items-center justify-center bg-background-100">
@@ -632,6 +722,22 @@ export function DesktopShell({
             onClick={() => router.push("/desktop")}
           >
             Back to Workspaces
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            className="pointer-events-auto"
+            disabled={!activeWorkspaceId || sharingWorkspace}
+            onClick={() => {
+              void handleShareWorkspace();
+            }}
+          >
+            {sharingWorkspace ? (
+              <Spinner className="size-3.5" />
+            ) : (
+              <Share2 className="mr-1.5 size-3.5" />
+            )}
+            Share
           </Button>
           <Button
             size="sm"
@@ -747,6 +853,57 @@ export function DesktopShell({
             settings={cliTerminalSettings}
           />
         </div>
+        <Dialog
+          open={shareDialogOpen}
+          onOpenChange={(open) => {
+            setShareDialogOpen(open);
+            if (!open) {
+              setShareError(null);
+            }
+          }}
+        >
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Share Workspace</DialogTitle>
+              <DialogDescription>
+                Anyone with this link can view your shared workspace.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2">
+              <Input
+                value={shareLink ?? ""}
+                readOnly
+                aria-label="Share link"
+                placeholder="Share link unavailable"
+              />
+              {shareError ? (
+                <p className="text-copy-12 text-red-900">{shareError}</p>
+              ) : null}
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  if (!shareLink) return;
+                  window.open(shareLink, "_blank", "noopener,noreferrer");
+                }}
+                disabled={!shareLink}
+              >
+                Open Link
+              </Button>
+              <Button
+                type="button"
+                onClick={() => {
+                  void copyShareLink();
+                }}
+                disabled={!shareLink || shareCopying}
+              >
+                {shareCopying ? <Spinner className="size-3.5" /> : "Copy Link"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
         <TerminalSettingsDialog
           open={cliSettingsOpen}
           onOpenChange={setCliSettingsOpen}
@@ -763,6 +920,34 @@ export function DesktopShell({
 
   return (
     <div className="h-screen w-screen overflow-hidden">
+      {strictTargetRoute && (
+        <div className="pointer-events-none fixed right-3 top-3 z-9500 flex gap-2 rounded-md bg-black/35 p-2 backdrop-blur-sm">
+          <Button
+            size="sm"
+            variant="secondary"
+            className="pointer-events-auto"
+            onClick={() => router.push("/desktop")}
+          >
+            Back to Workspaces
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            className="pointer-events-auto"
+            disabled={!activeWorkspaceId || sharingWorkspace}
+            onClick={() => {
+              void handleShareWorkspace();
+            }}
+          >
+            {sharingWorkspace ? (
+              <Spinner className="size-3.5" />
+            ) : (
+              <Share2 className="mr-1.5 size-3.5" />
+            )}
+            Share
+          </Button>
+        </div>
+      )}
       <AlertDialog
         open={shutdownDialogOpen}
         onOpenChange={(open) => {

@@ -160,7 +160,7 @@ export function TerminalApp({
           }
         }
 
-        const wsUrl = `wss://${servicesDomain}/ws/terminal?cols=${t.cols}&rows=${t.rows}`;
+        const wsUrl = `wss://${servicesDomain}/ws/terminal?cols=${t.cols}&rows=${t.rows}&session=main`;
         ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
