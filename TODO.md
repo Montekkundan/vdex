@@ -1,0 +1,5 @@
+- create dialog, disable selects fields when submit and loading and createing vm
+- icon selection to be changed to something better?
+- need to read https://vercel.com/platforms
+- config files to easily setup new sandbox or easy configurable snapshots to start with default values easily
+- when i go back to workspaces the sanbox cli does not run in backgound, ongoing command stops
