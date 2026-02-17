@@ -152,7 +152,9 @@ export function ProfilesClient() {
   >("platform_default");
   const [policySnapshotRefId, setPolicySnapshotRefId] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [policyActionResult, setPolicyActionResult] = useState<string | null>(null);
+  const [policyActionResult, setPolicyActionResult] = useState<string | null>(
+    null,
+  );
   const [busy, setBusy] = useState<string | null>(null);
 
   const readySnapshots = useMemo(
@@ -234,6 +236,9 @@ export function ProfilesClient() {
                   <Button asChild variant="secondary">
                     <Link href="/sandboxes">Sandboxes</Link>
                   </Button>
+                  <Button asChild variant="secondary">
+                    <Link href="/recordings">Recordings</Link>
+                  </Button>
                 </>
               }
             />
@@ -258,7 +263,11 @@ export function ProfilesClient() {
                     <p className="text-gray-700">Includes</p>
                     <div className="flex flex-wrap gap-1.5">
                       {GUI_BASE_INCLUDES.map((item) => (
-                        <Badge key={item} variant="outline" className="text-copy-11">
+                        <Badge
+                          key={item}
+                          variant="outline"
+                          className="text-copy-11"
+                        >
                           {item}
                         </Badge>
                       ))}
@@ -277,7 +286,11 @@ export function ProfilesClient() {
                     <p className="text-gray-700">Includes</p>
                     <div className="flex flex-wrap gap-1.5">
                       {CLI_BASE_INCLUDES.map((item) => (
-                        <Badge key={item} variant="outline" className="text-copy-11">
+                        <Badge
+                          key={item}
+                          variant="outline"
+                          className="text-copy-11"
+                        >
                           {item}
                         </Badge>
                       ))}
@@ -717,9 +730,10 @@ export function ProfilesClient() {
                     runWithState("policy-replenish", async () => {
                       setPolicyActionResult(null);
                       const result = await replenishPoolPoliciesMutate();
-                      const errorHint = result.errors.length > 0
-                        ? ` First error: ${result.errors[0]}`
-                        : "";
+                      const errorHint =
+                        result.errors.length > 0
+                          ? ` First error: ${result.errors[0]}`
+                          : "";
                       setPolicyActionResult(
                         `Replenish all complete: ${result.created} created, ${result.failed} failed.${errorHint}`,
                       );
@@ -733,7 +747,9 @@ export function ProfilesClient() {
                   )}
                 </Button>
                 {policyActionResult ? (
-                  <p className="text-copy-12 text-gray-700">{policyActionResult}</p>
+                  <p className="text-copy-12 text-gray-700">
+                    {policyActionResult}
+                  </p>
                 ) : null}
 
                 <div className="space-y-2">
@@ -748,16 +764,24 @@ export function ProfilesClient() {
                         </p>
                         <div className="mt-1 flex flex-wrap items-center gap-1.5">
                           <Badge variant="outline">
-                            {PROVIDERS[policy.provider as keyof typeof PROVIDERS]?.label ?? policy.provider}
+                            {PROVIDERS[
+                              policy.provider as keyof typeof PROVIDERS
+                            ]?.label ?? policy.provider}
                           </Badge>
                           <Badge variant="outline">
-                            {EXPERIENCES[policy.experience as keyof typeof EXPERIENCES]?.label ?? policy.experience}
+                            {EXPERIENCES[
+                              policy.experience as keyof typeof EXPERIENCES
+                            ]?.label ?? policy.experience}
                           </Badge>
                           <Badge variant="outline">
-                            {DISPLAY_CLIENTS[policy.displayClient as keyof typeof DISPLAY_CLIENTS]?.label ?? policy.displayClient}
+                            {DISPLAY_CLIENTS[
+                              policy.displayClient as keyof typeof DISPLAY_CLIENTS
+                            ]?.label ?? policy.displayClient}
                           </Badge>
                           <Badge variant="outline">
-                            {SIZE_PROFILES[policy.sizeProfile as keyof typeof SIZE_PROFILES]?.label ?? policy.sizeProfile}
+                            {SIZE_PROFILES[
+                              policy.sizeProfile as keyof typeof SIZE_PROFILES
+                            ]?.label ?? policy.sizeProfile}
                           </Badge>
                         </div>
                         <div className="mt-1 flex flex-wrap items-center gap-1.5">
@@ -766,12 +790,14 @@ export function ProfilesClient() {
                           </Badge>
                           {policy.snapshotRefId ? (
                             <Badge variant="outline">
-                              {snapshotNameById.get(policy.snapshotRefId) ?? `${policy.snapshotRefId.slice(0, 8)}...`}
+                              {snapshotNameById.get(policy.snapshotRefId) ??
+                                `${policy.snapshotRefId.slice(0, 8)}...`}
                             </Badge>
                           ) : null}
                         </div>
                         <p className="text-copy-12 text-gray-700">
-                          available={policy.availableCount} · claimed={policy.claimedCount}
+                          available={policy.availableCount} · claimed=
+                          {policy.claimedCount}
                         </p>
                       </div>
                       <div className="flex items-center gap-2">
@@ -806,16 +832,21 @@ export function ProfilesClient() {
                           variant="secondary"
                           disabled={!!busy}
                           onClick={() =>
-                            runWithState(`policy-replenish-${policy.id}`, async () => {
-                              setPolicyActionResult(null);
-                              const result = await replenishPoolPoliciesMutate(policy.id);
-                              const errorHint = result.errors.length > 0
-                                ? ` First error: ${result.errors[0]}`
-                                : "";
-                              setPolicyActionResult(
-                                `${policy.name}: ${result.created} created, ${result.failed} failed.${errorHint}`,
-                              );
-                            })
+                            runWithState(
+                              `policy-replenish-${policy.id}`,
+                              async () => {
+                                setPolicyActionResult(null);
+                                const result =
+                                  await replenishPoolPoliciesMutate(policy.id);
+                                const errorHint =
+                                  result.errors.length > 0
+                                    ? ` First error: ${result.errors[0]}`
+                                    : "";
+                                setPolicyActionResult(
+                                  `${policy.name}: ${result.created} created, ${result.failed} failed.${errorHint}`,
+                                );
+                              },
+                            )
                           }
                         >
                           {busy === `policy-replenish-${policy.id}` ? (
@@ -891,7 +922,9 @@ export function ProfilesClient() {
               </CardHeader>
               <CardContent className="space-y-2">
                 {expiredEntries.length === 0 ? (
-                  <p className="text-copy-13 text-gray-700">No expired entries.</p>
+                  <p className="text-copy-13 text-gray-700">
+                    No expired entries.
+                  </p>
                 ) : (
                   expiredEntries.map((entry) => (
                     <div
@@ -899,12 +932,17 @@ export function ProfilesClient() {
                       className="rounded-md border border-gray-alpha-300 p-3"
                     >
                       <p className="text-copy-14 font-medium text-gray-1000">
-                        {policyNameById.get(entry.policyId ?? "") ?? "Unassigned policy"}
+                        {policyNameById.get(entry.policyId ?? "") ??
+                          "Unassigned policy"}
                       </p>
                       <div className="mt-1 flex flex-wrap items-center gap-1.5">
                         <Badge variant="outline">{entry.status}</Badge>
-                        <Badge variant="outline">sandbox {entry.sandboxId.slice(0, 16)}...</Badge>
-                        <Badge variant="outline">snapshot {entry.snapshotId.slice(0, 12)}...</Badge>
+                        <Badge variant="outline">
+                          sandbox {entry.sandboxId.slice(0, 16)}...
+                        </Badge>
+                        <Badge variant="outline">
+                          snapshot {entry.snapshotId.slice(0, 12)}...
+                        </Badge>
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-1.5">
                         <Badge variant="outline">

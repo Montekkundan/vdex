@@ -4,20 +4,44 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { ColumnDef } from "@tanstack/react-table";
-import { mutateWorkspaces, usePoolPolicies, useSnapshots, useWorkspaces } from "@/lib/hooks/use-swr-hooks";
-import { DISPLAY_CLIENTS, EXPERIENCES, PROVIDERS, SIZE_PROFILES } from "@/lib/runtime/profiles";
+import {
+  mutateWorkspaces,
+  usePoolPolicies,
+  useSnapshots,
+  useWorkspaces,
+} from "@/lib/hooks/use-swr-hooks";
+import {
+  DISPLAY_CLIENTS,
+  EXPERIENCES,
+  PROVIDERS,
+  SIZE_PROFILES,
+} from "@/lib/runtime/profiles";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 import { slugify } from "@/lib/workspace-slug";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { Spinner } from "@/components/ui/spinner";
 import { WorkspaceIcon } from "@/components/workspace-icon";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/layout/page-header";
 import { AppPageFooter } from "@/components/layout/app-page-footer";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -51,6 +75,10 @@ import {
   WORKSPACE_ICON_NAMES,
 } from "@/types/workspace";
 import { ChevronDownIcon } from "lucide-react";
+import {
+  DEFAULT_SANDBOX_TIMEOUT_MS,
+  SANDBOX_TIMEOUT_PRESETS_MS,
+} from "@/lib/sandbox/limits";
 
 const STATUS_STYLE: Record<string, string> = {
   active: "bg-green-100 text-green-900 border border-green-300",
@@ -58,6 +86,25 @@ const STATUS_STYLE: Record<string, string> = {
   creating: "bg-blue-100 text-blue-900 border border-blue-300",
   snapshotted: "bg-purple-100 text-purple-900 border border-purple-300",
   error: "bg-red-100 text-red-900 border border-red-300",
+};
+
+const TIMEOUT_LABELS: Record<number, string> = {
+  [5 * 60 * 1000]: "5 minutes",
+  [15 * 60 * 1000]: "15 minutes",
+  [30 * 60 * 1000]: "30 minutes",
+  [45 * 60 * 1000]: "45 minutes",
+  [60 * 60 * 1000]: "1 hour",
+  [2 * 60 * 60 * 1000]: "2 hours",
+  [3 * 60 * 60 * 1000]: "3 hours",
+  [5 * 60 * 60 * 1000]: "5 hours",
+};
+
+const TIMEOUT_CAPABILITY_CACHE_KEY = "vdex:timeout-capability:v1";
+
+type TimeoutCapability = {
+  maxTimeoutMs: number;
+  detectionMethod: "probe" | "cache";
+  checkedAt: string;
 };
 
 export function DesktopHub() {
@@ -74,26 +121,46 @@ export function DesktopHub() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [newWorkspaceName, setNewWorkspaceName] = useState("");
   const [newWorkspaceIcon, setNewWorkspaceIcon] = useState("terminal");
-  const [newWorkspaceProvider, setNewWorkspaceProvider] = useState<ProviderId>("vercel");
-  const [newWorkspaceExperience, setNewWorkspaceExperience] = useState<WorkspaceExperience>("gui");
-  const [newWorkspaceSizeProfile, setNewWorkspaceSizeProfile] = useState<SizeProfileId>("small_2c4g");
+  const [newWorkspaceProvider, setNewWorkspaceProvider] =
+    useState<ProviderId>("vercel");
+  const [newWorkspaceExperience, setNewWorkspaceExperience] =
+    useState<WorkspaceExperience>("gui");
+  const [newWorkspaceSizeProfile, setNewWorkspaceSizeProfile] =
+    useState<SizeProfileId>("small_2c4g");
+  const [newWorkspaceTimeoutMs, setNewWorkspaceTimeoutMs] = useState<number>(
+    DEFAULT_SANDBOX_TIMEOUT_MS,
+  );
   const [newWorkspaceSnapshotSource, setNewWorkspaceSnapshotSource] = useState<
     "platform_default" | "user_snapshot"
   >("platform_default");
-  const [newWorkspaceSnapshotRefId, setNewWorkspaceSnapshotRefId] = useState("");
+  const [newWorkspaceSnapshotRefId, setNewWorkspaceSnapshotRefId] =
+    useState("");
+  const [newWorkspaceAutoRecord, setNewWorkspaceAutoRecord] = useState(false);
+  const [timeoutCapability, setTimeoutCapability] =
+    useState<TimeoutCapability | null>(null);
+  const [timeoutCapabilityLoading, setTimeoutCapabilityLoading] =
+    useState(false);
   const [warmPoolDialogOpen, setWarmPoolDialogOpen] = useState(false);
   const [selectedWarmPolicyId, setSelectedWarmPolicyId] = useState("");
   const [warmPoolWorkspaceName, setWarmPoolWorkspaceName] = useState("");
   const [creatingFromWarmPool, setCreatingFromWarmPool] = useState(false);
-  const [shutdownWorkspace, setShutdownWorkspace] = useState<{ id: string; name: string } | null>(null);
+  const [shutdownWorkspace, setShutdownWorkspace] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
   const [shutdownWithSnapshot, setShutdownWithSnapshot] = useState(false);
   const [shutdownWithoutSnapshot, setShutdownWithoutSnapshot] = useState(false);
-  const [deleteWorkspaceTarget, setDeleteWorkspaceTarget] = useState<{ id: string; name: string } | null>(null);
-  const [deletingWorkspace, setDeletingWorkspace] = useState(false);
-  const [pendingCreates, setPendingCreates] = useState<Array<{
+  const [deleteWorkspaceTarget, setDeleteWorkspaceTarget] = useState<{
     id: string;
-    workspace: (typeof workspaces)[number];
-  }>>([]);
+    name: string;
+  } | null>(null);
+  const [deletingWorkspace, setDeletingWorkspace] = useState(false);
+  const [pendingCreates, setPendingCreates] = useState<
+    Array<{
+      id: string;
+      workspace: (typeof workspaces)[number];
+    }>
+  >([]);
   const pendingCreateSeqRef = useRef(0);
   const checkedRef = useRef<Set<string>>(new Set());
   const lockedDisplayClient: DisplayClient =
@@ -129,17 +196,85 @@ export function DesktopHub() {
 
   const availableWarmPolicies = useMemo(
     () =>
-      policies.filter(
-        (policy) =>
-          policy.enabled &&
-          policy.availableCount > 0,
-      ),
+      policies.filter((policy) => policy.enabled && policy.availableCount > 0),
     [policies],
   );
   const selectedWarmPolicy = useMemo(
-    () => availableWarmPolicies.find((policy) => policy.id === selectedWarmPolicyId) ?? null,
+    () =>
+      availableWarmPolicies.find(
+        (policy) => policy.id === selectedWarmPolicyId,
+      ) ?? null,
     [availableWarmPolicies, selectedWarmPolicyId],
   );
+  const maxSelectableTimeoutMs =
+    timeoutCapability?.maxTimeoutMs ?? DEFAULT_SANDBOX_TIMEOUT_MS;
+  const timeoutOptions = useMemo(
+    () =>
+      SANDBOX_TIMEOUT_PRESETS_MS.map((value) => ({
+        value,
+        label: TIMEOUT_LABELS[value] ?? `${Math.round(value / 60000)} minutes`,
+        locked: value > maxSelectableTimeoutMs,
+      })),
+    [maxSelectableTimeoutMs],
+  );
+
+  useEffect(() => {
+    if (!createDialogOpen || timeoutCapability || timeoutCapabilityLoading)
+      return;
+
+    try {
+      const cached = localStorage.getItem(TIMEOUT_CAPABILITY_CACHE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached) as TimeoutCapability;
+        if (
+          typeof parsed?.maxTimeoutMs === "number" &&
+          Number.isFinite(parsed.maxTimeoutMs)
+        ) {
+          setTimeoutCapability({ ...parsed, detectionMethod: "cache" });
+          return;
+        }
+      }
+    } catch {
+      // ignore cache parse errors and fall back to probing
+    }
+
+    setTimeoutCapabilityLoading(true);
+    void fetch("/api/sandbox/timeout-capability")
+      .then(async (res) => {
+        if (!res.ok) throw new Error("Capability probe failed");
+        const body = (await res.json()) as TimeoutCapability;
+        const safe = {
+          maxTimeoutMs:
+            typeof body.maxTimeoutMs === "number" &&
+            Number.isFinite(body.maxTimeoutMs)
+              ? body.maxTimeoutMs
+              : DEFAULT_SANDBOX_TIMEOUT_MS,
+          detectionMethod: "probe" as const,
+          checkedAt: body.checkedAt || new Date().toISOString(),
+        };
+        setTimeoutCapability(safe);
+        localStorage.setItem(
+          TIMEOUT_CAPABILITY_CACHE_KEY,
+          JSON.stringify(safe),
+        );
+      })
+      .catch(() => {
+        const fallback: TimeoutCapability = {
+          maxTimeoutMs: DEFAULT_SANDBOX_TIMEOUT_MS,
+          detectionMethod: "probe",
+          checkedAt: new Date().toISOString(),
+        };
+        setTimeoutCapability(fallback);
+      })
+      .finally(() => {
+        setTimeoutCapabilityLoading(false);
+      });
+  }, [createDialogOpen, timeoutCapability, timeoutCapabilityLoading]);
+
+  useEffect(() => {
+    if (newWorkspaceTimeoutMs <= maxSelectableTimeoutMs) return;
+    setNewWorkspaceTimeoutMs(maxSelectableTimeoutMs);
+  }, [maxSelectableTimeoutMs, newWorkspaceTimeoutMs]);
 
   const mergedWorkspaces = useMemo(() => {
     // Hide optimistic placeholders once the real server workspace row appears.
@@ -162,180 +297,188 @@ export function DesktopHub() {
       [...mergedWorkspaces].sort((a, b) => {
         if (a.status === "active" && b.status !== "active") return -1;
         if (a.status !== "active" && b.status === "active") return 1;
-        return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+        return (
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+        );
       }),
     [mergedWorkspaces],
   );
   const instanceColumns: ColumnDef<(typeof sorted)[number]>[] = [
-      {
-        accessorKey: "name",
-        header: "Workspace",
-        cell: ({ row }) => {
-          const ws = row.original;
-          return (
-            <div className="min-w-0 flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-alpha-200">
-                <WorkspaceIcon name={ws.icon} size={16} />
-              </div>
-              <div className="min-w-0">
-                <p className="max-w-[220px] truncate text-copy-14 font-medium text-gray-1000">
-                  {ws.name}
-                </p>
-                <p className="max-w-[260px] truncate text-copy-12 text-gray-700">
-                  {ws.id}
-                </p>
-              </div>
+    {
+      accessorKey: "name",
+      header: "Workspace",
+      cell: ({ row }) => {
+        const ws = row.original;
+        return (
+          <div className="min-w-0 flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-alpha-200">
+              <WorkspaceIcon name={ws.icon} size={16} />
             </div>
-          );
-        },
+            <div className="min-w-0">
+              <p className="max-w-[220px] truncate text-copy-14 font-medium text-gray-1000">
+                {ws.name}
+              </p>
+              <p className="max-w-[260px] truncate text-copy-12 text-gray-700">
+                {ws.id}
+              </p>
+            </div>
+          </div>
+        );
       },
-      {
-        accessorKey: "status",
-        header: "Status",
-        cell: ({ row }) => (
-          <Badge
-            variant="outline"
-            className={STATUS_STYLE[row.original.status] ?? STATUS_STYLE.stopped}
+    },
+    {
+      accessorKey: "status",
+      header: "Status",
+      cell: ({ row }) => (
+        <Badge
+          variant="outline"
+          className={STATUS_STYLE[row.original.status] ?? STATUS_STYLE.stopped}
+        >
+          {row.original.status}
+        </Badge>
+      ),
+    },
+    {
+      accessorKey: "provider",
+      header: "Provider",
+      cell: ({ row }) => (
+        <span className="block max-w-[180px] truncate text-copy-13 text-gray-900">
+          {PROVIDERS[row.original.provider]?.label ?? row.original.provider}
+        </span>
+      ),
+    },
+    {
+      accessorKey: "experience",
+      header: "Experience",
+      cell: ({ row }) => (
+        <span className="block max-w-[160px] truncate text-copy-13 text-gray-900">
+          {EXPERIENCES[row.original.experience]?.label ??
+            row.original.experience}
+        </span>
+      ),
+    },
+    {
+      accessorKey: "displayClient",
+      header: "Display",
+      cell: ({ row }) => (
+        <span className="block max-w-[140px] truncate text-copy-13 text-gray-900">
+          {DISPLAY_CLIENTS[row.original.displayClient]?.label ??
+            row.original.displayClient}
+        </span>
+      ),
+    },
+    {
+      accessorKey: "sizeProfile",
+      header: "Size",
+      cell: ({ row }) => (
+        <span className="block max-w-[190px] truncate text-copy-13 text-gray-900">
+          {SIZE_PROFILES[row.original.sizeProfile]?.label ??
+            row.original.sizeProfile}
+        </span>
+      ),
+    },
+    {
+      id: "snapshot",
+      header: "Snapshot",
+      cell: ({ row }) => {
+        const snapshotId = row.original.snapshotId;
+        if (!snapshotId) {
+          return <span className="text-copy-12 text-gray-700">None</span>;
+        }
+        const name = snapshotNameById.get(snapshotId);
+        return (
+          <span
+            className="block max-w-[220px] truncate text-copy-12 text-gray-900"
+            title={name ?? snapshotId}
           >
-            {row.original.status}
-          </Badge>
-        ),
-      },
-      {
-        accessorKey: "provider",
-        header: "Provider",
-        cell: ({ row }) => (
-          <span className="block max-w-[180px] truncate text-copy-13 text-gray-900">
-            {PROVIDERS[row.original.provider]?.label ?? row.original.provider}
+            {name ?? snapshotId}
           </span>
-        ),
+        );
       },
-      {
-        accessorKey: "experience",
-        header: "Experience",
-        cell: ({ row }) => (
-          <span className="block max-w-[160px] truncate text-copy-13 text-gray-900">
-            {EXPERIENCES[row.original.experience]?.label ?? row.original.experience}
-          </span>
-        ),
-      },
-      {
-        accessorKey: "displayClient",
-        header: "Display",
-        cell: ({ row }) => (
-          <span className="block max-w-[140px] truncate text-copy-13 text-gray-900">
-            {DISPLAY_CLIENTS[row.original.displayClient]?.label ??
-              row.original.displayClient}
-          </span>
-        ),
-      },
-      {
-        accessorKey: "sizeProfile",
-        header: "Size",
-        cell: ({ row }) => (
-          <span className="block max-w-[190px] truncate text-copy-13 text-gray-900">
-            {SIZE_PROFILES[row.original.sizeProfile]?.label ??
-              row.original.sizeProfile}
-          </span>
-        ),
-      },
-      {
-        id: "snapshot",
-        header: "Snapshot",
-        cell: ({ row }) => {
-          const snapshotId = row.original.snapshotId;
-          if (!snapshotId) {
-            return <span className="text-copy-12 text-gray-700">None</span>;
-          }
-          const name = snapshotNameById.get(snapshotId);
-          return (
-            <span
-              className="block max-w-[220px] truncate text-copy-12 text-gray-900"
-              title={name ?? snapshotId}
-            >
-              {name ?? snapshotId}
-            </span>
-          );
-        },
-      },
-      {
-        accessorKey: "updatedAt",
-        header: "Updated",
-        cell: ({ row }) => (
-          <span className="text-copy-12 text-gray-700">
-            {new Date(row.original.updatedAt).toLocaleString()}
-          </span>
-        ),
-      },
-      {
-        id: "actions",
-        header: () => <div className="text-right">Actions</div>,
-        enableSorting: false,
-        cell: ({ row }) => {
-          const ws = row.original;
-          const busy = actionId === ws.id;
-          return (
-            <div className="flex items-center justify-end gap-2">
-              {ws.status === "active" ? (
-                <Button
-                  size="sm"
-                  onClick={() => handleOpen(ws.id, ws.name, ws.status)}
-                  disabled={busy}
-                >
-                  {busy ? <Spinner className="size-3.5" /> : "Open"}
-                </Button>
-              ) : ws.snapshotId ? (
-                <Button
-                  size="sm"
-                  onClick={() => handleOpen(ws.id, ws.name, ws.status)}
-                  disabled={busy}
-                >
-                  {busy ? <Spinner className="size-3.5" /> : "Start"}
-                </Button>
-              ) : (
-                <Badge variant="outline" className="h-6">
-                  No snapshot
-                </Badge>
-              )}
-              {ws.status === "active" && (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => setShutdownWorkspace({ id: ws.id, name: ws.name })}
-                  disabled={busy}
-                >
-                  Shutdown
-                </Button>
-              )}
+    },
+    {
+      accessorKey: "updatedAt",
+      header: "Updated",
+      cell: ({ row }) => (
+        <span className="text-copy-12 text-gray-700">
+          {new Date(row.original.updatedAt).toLocaleString()}
+        </span>
+      ),
+    },
+    {
+      id: "actions",
+      header: () => <div className="text-right">Actions</div>,
+      enableSorting: false,
+      cell: ({ row }) => {
+        const ws = row.original;
+        const busy = actionId === ws.id;
+        return (
+          <div className="flex items-center justify-end gap-2">
+            {ws.status === "active" ? (
               <Button
                 size="sm"
-                variant="destructive"
+                onClick={() => handleOpen(ws.id, ws.name, ws.status)}
+                disabled={busy}
+              >
+                {busy ? <Spinner className="size-3.5" /> : "Open"}
+              </Button>
+            ) : ws.snapshotId ? (
+              <Button
+                size="sm"
+                onClick={() => handleOpen(ws.id, ws.name, ws.status)}
+                disabled={busy}
+              >
+                {busy ? <Spinner className="size-3.5" /> : "Start"}
+              </Button>
+            ) : (
+              <Badge variant="outline" className="h-6">
+                No snapshot
+              </Badge>
+            )}
+            {ws.status === "active" && (
+              <Button
+                size="sm"
+                variant="secondary"
                 onClick={() =>
-                  setDeleteWorkspaceTarget({
-                    id: ws.id,
-                    name: ws.name,
-                  })
+                  setShutdownWorkspace({ id: ws.id, name: ws.name })
                 }
                 disabled={busy}
               >
-                Delete
+                Shutdown
               </Button>
-            </div>
-          );
-        },
+            )}
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={() =>
+                setDeleteWorkspaceTarget({
+                  id: ws.id,
+                  name: ws.name,
+                })
+              }
+              disabled={busy}
+            >
+              Delete
+            </Button>
+          </div>
+        );
       },
-    ];
+    },
+  ];
 
   // Reconcile stale "active" DB rows against live sandbox state.
   // /api/sandbox/[id] will mark dead sandboxes as stopped server-side.
   useEffect(() => {
-    const activeIds = new Set(workspaces.filter((w) => w.status === "active").map((w) => w.id));
+    const activeIds = new Set(
+      workspaces.filter((w) => w.status === "active").map((w) => w.id),
+    );
     for (const id of Array.from(checkedRef.current)) {
       if (!activeIds.has(id)) checkedRef.current.delete(id);
     }
 
     const activeToCheck = workspaces.filter(
-      (w) => w.status === "active" && w.sandboxId && !checkedRef.current.has(w.id),
+      (w) =>
+        w.status === "active" && w.sandboxId && !checkedRef.current.has(w.id),
     );
     if (activeToCheck.length === 0) return;
 
@@ -364,8 +507,45 @@ export function DesktopHub() {
     setNewWorkspaceProvider("vercel");
     setNewWorkspaceExperience("gui");
     setNewWorkspaceSizeProfile("small_2c4g");
+    setNewWorkspaceTimeoutMs(DEFAULT_SANDBOX_TIMEOUT_MS);
     setNewWorkspaceSnapshotSource("platform_default");
     setNewWorkspaceSnapshotRefId("");
+    setNewWorkspaceAutoRecord(false);
+  }
+
+  async function startRecordingWhenWorkspaceReady(workspaceId: string) {
+    const maxAttempts = 30;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      try {
+        const res = await fetch("/api/recordings/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ workspaceId }),
+        });
+        if (res.ok) return;
+        const body = await res.json().catch(() => ({}));
+        const message =
+          typeof body?.error === "string"
+            ? body.error
+            : "Failed to start recording";
+        if (
+          message.includes("must be running") ||
+          message.includes("already in progress")
+        ) {
+          await new Promise((resolve) => setTimeout(resolve, 2_000));
+          continue;
+        }
+        throw new Error(message);
+      } catch (err) {
+        if (attempt === maxAttempts - 1) {
+          throw err instanceof Error
+            ? err
+            : new Error("Failed to auto-start recording");
+        }
+        await new Promise((resolve) => setTimeout(resolve, 2_000));
+      }
+    }
+    throw new Error("Timed out while waiting to auto-start recording");
   }
 
   async function handleCreateFromWarmPool() {
@@ -378,10 +558,11 @@ export function DesktopHub() {
       experience: selectedWarmPolicy.experience as WorkspaceExperience,
       displayClient: selectedWarmPolicy.displayClient as DisplayClient,
       sizeProfile: selectedWarmPolicy.sizeProfile as SizeProfileId,
+      timeoutMs: DEFAULT_SANDBOX_TIMEOUT_MS,
       snapshotSource: selectedWarmPolicy.snapshotRefType,
       snapshotRefId:
         selectedWarmPolicy.snapshotRefType === "user_snapshot"
-          ? selectedWarmPolicy.snapshotRefId ?? undefined
+          ? (selectedWarmPolicy.snapshotRefId ?? undefined)
           : undefined,
     } as const;
 
@@ -409,7 +590,8 @@ export function DesktopHub() {
       setSelectedWarmPolicyId("");
       setWarmPoolWorkspaceName("");
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to create workspace";
+      const message =
+        err instanceof Error ? err.message : "Failed to create workspace";
       setActionError(message);
       captureEvent("workspace_create_failed", {
         ...payload,
@@ -426,6 +608,7 @@ export function DesktopHub() {
 
   async function handleCreate() {
     const startedAt = Date.now();
+    const shouldAutoRecord = newWorkspaceAutoRecord;
     const payload = {
       name: newWorkspaceName.trim() || undefined,
       icon: newWorkspaceIcon,
@@ -433,6 +616,7 @@ export function DesktopHub() {
       experience: newWorkspaceExperience,
       displayClient: lockedDisplayClient,
       sizeProfile: newWorkspaceSizeProfile,
+      timeoutMs: newWorkspaceTimeoutMs,
       snapshotSource: newWorkspaceSnapshotSource,
       snapshotRefId:
         newWorkspaceSnapshotSource === "user_snapshot"
@@ -454,7 +638,12 @@ export function DesktopHub() {
       experience: payload.experience,
       displayClient: payload.displayClient,
       sizeProfile: payload.sizeProfile,
+      timeoutMs: payload.timeoutMs,
+      runtimeStartedAt: null,
       status: "creating" as const,
+      stopReason: null,
+      stoppedAt: null,
+      lastSandboxId: null,
       sandboxDomain: null,
       background: null,
       shareEnabled: false,
@@ -463,13 +652,29 @@ export function DesktopHub() {
       updatedAt: nowIso,
     };
 
-    setPendingCreates((prev) => [{ id: pendingId, workspace: pendingWorkspace }, ...prev]);
+    setPendingCreates((prev) => [
+      { id: pendingId, workspace: pendingWorkspace },
+      ...prev,
+    ]);
     setCreateDialogOpen(false);
     resetCreateDialog();
     setActionError(null);
 
     void createWorkspace(payload)
       .then((workspace) => {
+        if (shouldAutoRecord) {
+          void startRecordingWhenWorkspaceReady(workspace.id).catch((err) => {
+            const message =
+              err instanceof Error
+                ? err.message
+                : "Failed to auto-start recording";
+            setActionError(message);
+            captureEvent("workspace_auto_recording_failed", {
+              workspaceId: workspace.id,
+              errorMessage: message,
+            });
+          });
+        }
         captureEvent("workspace_create_succeeded", {
           workspaceId: workspace.id,
           provider: workspace.provider,
@@ -481,7 +686,8 @@ export function DesktopHub() {
         });
       })
       .catch((err) => {
-        const message = err instanceof Error ? err.message : "Failed to create workspace";
+        const message =
+          err instanceof Error ? err.message : "Failed to create workspace";
         setActionError(message);
         captureEvent("workspace_create_failed", {
           ...payload,
@@ -491,7 +697,9 @@ export function DesktopHub() {
         });
       })
       .finally(() => {
-        setPendingCreates((prev) => prev.filter((entry) => entry.id !== pendingId));
+        setPendingCreates((prev) =>
+          prev.filter((entry) => entry.id !== pendingId),
+        );
       });
   }
 
@@ -526,7 +734,9 @@ export function DesktopHub() {
       const body = await probe.json().catch(() => ({}));
       if (body?.sandboxLost) {
         await mutateWorkspaces();
-        setActionError("This VM is no longer running. Start it again from snapshot.");
+        setActionError(
+          "This VM is no longer running. Start it again from snapshot.",
+        );
         captureEvent("workspace_open_failed", {
           ...meta,
           errorCode: "sandbox_lost_preflight",
@@ -561,7 +771,18 @@ export function DesktopHub() {
       }
 
       if (!ready) {
-        setActionError("VM is taking longer than expected to start display services. Try Open again.");
+        await fetch(`/api/sandbox/${id}/stop`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            createSnapshot: false,
+            reason: "display_start_timeout",
+          }),
+        }).catch(() => null);
+        await mutateWorkspaces();
+        setActionError(
+          "VM is taking longer than expected to start display services. Try Open again.",
+        );
         captureEvent("workspace_open_failed", {
           ...meta,
           errorCode: "display_timeout",
@@ -576,7 +797,9 @@ export function DesktopHub() {
       });
       router.push(`/desktop/${encodeURIComponent(slugify(name))}`);
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Failed to open workspace");
+      setActionError(
+        err instanceof Error ? err.message : "Failed to open workspace",
+      );
       captureEvent("workspace_open_failed", {
         ...meta,
         errorCode: "open_failed",
@@ -616,7 +839,9 @@ export function DesktopHub() {
         errorMessage: err instanceof Error ? err.message : "Unknown error",
         latencyMs: Date.now() - startedAt,
       });
-      setActionError(err instanceof Error ? err.message : "Failed to shutdown workspace");
+      setActionError(
+        err instanceof Error ? err.message : "Failed to shutdown workspace",
+      );
     } finally {
       setActionId(null);
       setShutdownWithSnapshot(false);
@@ -687,11 +912,19 @@ export function DesktopHub() {
                   <Button asChild variant="secondary">
                     <Link href="/sandboxes">Sandboxes</Link>
                   </Button>
+                  <Button asChild variant="secondary">
+                    <Link href="/recordings">Recordings</Link>
+                  </Button>
                   <ButtonGroup>
-                    <Button onClick={() => setCreateDialogOpen(true)}>New VM</Button>
+                    <Button onClick={() => setCreateDialogOpen(true)}>
+                      New VM
+                    </Button>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button className="px-2" aria-label="More create options">
+                        <Button
+                          className="px-2"
+                          aria-label="More create options"
+                        >
                           <ChevronDownIcon className="size-4" />
                         </Button>
                       </DropdownMenuTrigger>
@@ -700,8 +933,9 @@ export function DesktopHub() {
                           disabled={availableWarmPolicies.length === 0}
                           onSelect={() => {
                             if (availableWarmPolicies.length === 0) return;
-                            setSelectedWarmPolicyId((prev) =>
-                              prev || availableWarmPolicies[0]?.id || "",
+                            setSelectedWarmPolicyId(
+                              (prev) =>
+                                prev || availableWarmPolicies[0]?.id || "",
                             );
                             setWarmPoolDialogOpen(true);
                           }}
@@ -718,16 +952,25 @@ export function DesktopHub() {
             <Card className="bg-background-200">
               <CardHeader>
                 <CardTitle>Instances</CardTitle>
-                <CardDescription>Launch and switch VMs instantly.</CardDescription>
+                <CardDescription>
+                  Launch and switch VMs instantly.
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 {actionError && (
-                  <p className="mb-3 text-copy-13 text-red-900">{actionError}</p>
+                  <p className="mb-3 text-copy-13 text-red-900">
+                    {actionError}
+                  </p>
                 )}
                 {sorted.length === 0 ? (
                   <div className="p-8 text-center">
-                    <p className="text-copy-14 text-gray-900">No workspaces yet.</p>
-                    <Button className="mt-4" onClick={() => setCreateDialogOpen(true)}>
+                    <p className="text-copy-14 text-gray-900">
+                      No workspaces yet.
+                    </p>
+                    <Button
+                      className="mt-4"
+                      onClick={() => setCreateDialogOpen(true)}
+                    >
                       Create first VM
                     </Button>
                   </div>
@@ -764,13 +1007,16 @@ export function DesktopHub() {
           <DialogHeader>
             <DialogTitle>Create VM</DialogTitle>
             <DialogDescription>
-              Configure VM profile and size. GUI display client is fixed to Xpra for now.
+              Configure VM profile and size. GUI display client is fixed to Xpra
+              for now.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3">
             <div className="space-y-1">
-              <label className="text-copy-12 text-gray-800">Name (optional)</label>
+              <label className="text-copy-12 text-gray-800">
+                Name (optional)
+              </label>
               <Input
                 value={newWorkspaceName}
                 onChange={(e) => setNewWorkspaceName(e.target.value)}
@@ -839,7 +1085,9 @@ export function DesktopHub() {
             </div>
 
             <div className="space-y-1">
-              <label className="text-copy-12 text-gray-800">Display client</label>
+              <label className="text-copy-12 text-gray-800">
+                Display client
+              </label>
               <Select value={lockedDisplayClient} disabled>
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select display client" />
@@ -875,26 +1123,84 @@ export function DesktopHub() {
             </div>
 
             <div className="space-y-1">
-              <label className="text-copy-12 text-gray-800">Snapshot source</label>
+              <label className="text-copy-12 text-gray-800">Timeout</label>
+              <Select
+                value={String(newWorkspaceTimeoutMs)}
+                onValueChange={(value) =>
+                  setNewWorkspaceTimeoutMs(Number(value))
+                }
+                disabled={timeoutCapabilityLoading}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select timeout" />
+                </SelectTrigger>
+                <SelectContent>
+                  {timeoutOptions.map((option) => (
+                    <SelectItem
+                      key={option.value}
+                      value={String(option.value)}
+                      disabled={option.locked}
+                    >
+                      {option.label}
+                      {option.locked
+                        ? " (Locked for current Vercel scope)"
+                        : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-copy-12 text-gray-700">
+                {timeoutCapabilityLoading
+                  ? "Detecting max timeout for your Vercel scope..."
+                  : `Max detected timeout: ${TIMEOUT_LABELS[maxSelectableTimeoutMs] ?? `${Math.round(maxSelectableTimeoutMs / 60000)} minutes`}`}
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-copy-12 text-gray-800">
+                Snapshot source
+              </label>
               <Select
                 value={newWorkspaceSnapshotSource}
                 onValueChange={(value) =>
-                  setNewWorkspaceSnapshotSource(value as "platform_default" | "user_snapshot")
+                  setNewWorkspaceSnapshotSource(
+                    value as "platform_default" | "user_snapshot",
+                  )
                 }
               >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select source" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="platform_default">Platform default</SelectItem>
+                  <SelectItem value="platform_default">
+                    Platform default
+                  </SelectItem>
                   <SelectItem value="user_snapshot">My snapshot</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
+            <div className="flex items-center justify-between rounded-md border border-gray-alpha-300 px-3 py-2">
+              <div>
+                <p className="text-copy-13 text-gray-1000">
+                  Start recording on boot
+                </p>
+                <p className="text-copy-12 text-gray-700">
+                  Automatically start session recording when the VM is ready.
+                </p>
+              </div>
+              <Switch
+                checked={newWorkspaceAutoRecord}
+                onCheckedChange={setNewWorkspaceAutoRecord}
+                aria-label="Auto-start recording for new VM"
+              />
+            </div>
+
             {newWorkspaceSnapshotSource === "user_snapshot" ? (
               <div className="space-y-1">
-                <label className="text-copy-12 text-gray-800">My snapshot</label>
+                <label className="text-copy-12 text-gray-800">
+                  My snapshot
+                </label>
                 <Select
                   value={newWorkspaceSnapshotRefId}
                   onValueChange={(value) => setNewWorkspaceSnapshotRefId(value)}
@@ -924,8 +1230,8 @@ export function DesktopHub() {
             <Button
               onClick={handleCreate}
               disabled={
-                (newWorkspaceSnapshotSource === "user_snapshot" &&
-                  !newWorkspaceSnapshotRefId)
+                newWorkspaceSnapshotSource === "user_snapshot" &&
+                !newWorkspaceSnapshotRefId
               }
             >
               Create VM
@@ -948,7 +1254,8 @@ export function DesktopHub() {
           <DialogHeader>
             <DialogTitle>Launch from Warm Pool</DialogTitle>
             <DialogDescription>
-              Choose an available warm policy and launch instantly with matching profile.
+              Choose an available warm policy and launch instantly with matching
+              profile.
             </DialogDescription>
           </DialogHeader>
 
@@ -960,17 +1267,23 @@ export function DesktopHub() {
             ) : (
               <>
                 <div className="space-y-1">
-                  <label className="text-copy-12 text-gray-800">Name (optional)</label>
+                  <label className="text-copy-12 text-gray-800">
+                    Name (optional)
+                  </label>
                   <Input
                     value={warmPoolWorkspaceName}
-                    onChange={(event) => setWarmPoolWorkspaceName(event.target.value)}
+                    onChange={(event) =>
+                      setWarmPoolWorkspaceName(event.target.value)
+                    }
                     placeholder="auto-generated"
                     maxLength={64}
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-copy-12 text-gray-800">Available policy</label>
+                  <label className="text-copy-12 text-gray-800">
+                    Available policy
+                  </label>
                   <Select
                     value={selectedWarmPolicyId}
                     onValueChange={setSelectedWarmPolicyId}
@@ -990,21 +1303,33 @@ export function DesktopHub() {
 
                 {selectedWarmPolicy ? (
                   <div className="rounded-md border border-gray-alpha-300 p-3 space-y-2">
-                    <p className="text-copy-13 text-foreground font-medium">{selectedWarmPolicy.name}</p>
+                    <p className="text-copy-13 text-foreground font-medium">
+                      {selectedWarmPolicy.name}
+                    </p>
                     <div className="flex flex-wrap gap-1.5">
                       <Badge variant="outline">
-                        {PROVIDERS[selectedWarmPolicy.provider as keyof typeof PROVIDERS]?.label ?? selectedWarmPolicy.provider}
+                        {PROVIDERS[
+                          selectedWarmPolicy.provider as keyof typeof PROVIDERS
+                        ]?.label ?? selectedWarmPolicy.provider}
                       </Badge>
                       <Badge variant="outline">
-                        {EXPERIENCES[selectedWarmPolicy.experience as keyof typeof EXPERIENCES]?.label ?? selectedWarmPolicy.experience}
+                        {EXPERIENCES[
+                          selectedWarmPolicy.experience as keyof typeof EXPERIENCES
+                        ]?.label ?? selectedWarmPolicy.experience}
                       </Badge>
                       <Badge variant="outline">
-                        {DISPLAY_CLIENTS[selectedWarmPolicy.displayClient as keyof typeof DISPLAY_CLIENTS]?.label ?? selectedWarmPolicy.displayClient}
+                        {DISPLAY_CLIENTS[
+                          selectedWarmPolicy.displayClient as keyof typeof DISPLAY_CLIENTS
+                        ]?.label ?? selectedWarmPolicy.displayClient}
                       </Badge>
                       <Badge variant="outline">
-                        {SIZE_PROFILES[selectedWarmPolicy.sizeProfile as keyof typeof SIZE_PROFILES]?.label ?? selectedWarmPolicy.sizeProfile}
+                        {SIZE_PROFILES[
+                          selectedWarmPolicy.sizeProfile as keyof typeof SIZE_PROFILES
+                        ]?.label ?? selectedWarmPolicy.sizeProfile}
                       </Badge>
-                      <Badge variant="outline">available {selectedWarmPolicy.availableCount}</Badge>
+                      <Badge variant="outline">
+                        available {selectedWarmPolicy.availableCount}
+                      </Badge>
                     </div>
                   </div>
                 ) : null}
@@ -1023,7 +1348,11 @@ export function DesktopHub() {
               onClick={() => void handleCreateFromWarmPool()}
               disabled={!selectedWarmPolicy || creatingFromWarmPool}
             >
-              {creatingFromWarmPool ? <Spinner className="size-3.5" /> : "Launch VM"}
+              {creatingFromWarmPool ? (
+                <Spinner className="size-3.5" />
+              ) : (
+                "Launch VM"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1047,12 +1376,18 @@ export function DesktopHub() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="flex-row justify-end">
-            <AlertDialogCancel disabled={shutdownWithSnapshot || shutdownWithoutSnapshot}>
+            <AlertDialogCancel
+              disabled={shutdownWithSnapshot || shutdownWithoutSnapshot}
+            >
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
               variant="outline"
-              disabled={!shutdownWorkspace || shutdownWithSnapshot || shutdownWithoutSnapshot}
+              disabled={
+                !shutdownWorkspace ||
+                shutdownWithSnapshot ||
+                shutdownWithoutSnapshot
+              }
               onClick={(e) => {
                 e.preventDefault();
                 if (!shutdownWorkspace) return;
@@ -1060,10 +1395,18 @@ export function DesktopHub() {
                 void handleStop(shutdownWorkspace.id, false);
               }}
             >
-              {shutdownWithoutSnapshot ? <Spinner className="size-3.5" /> : "Without Snapshot"}
+              {shutdownWithoutSnapshot ? (
+                <Spinner className="size-3.5" />
+              ) : (
+                "Without Snapshot"
+              )}
             </AlertDialogAction>
             <AlertDialogAction
-              disabled={!shutdownWorkspace || shutdownWithSnapshot || shutdownWithoutSnapshot}
+              disabled={
+                !shutdownWorkspace ||
+                shutdownWithSnapshot ||
+                shutdownWithoutSnapshot
+              }
               onClick={(e) => {
                 e.preventDefault();
                 if (!shutdownWorkspace) return;
@@ -1071,7 +1414,11 @@ export function DesktopHub() {
                 void handleStop(shutdownWorkspace.id, true);
               }}
             >
-              {shutdownWithSnapshot ? <Spinner className="size-3.5" /> : "With Snapshot"}
+              {shutdownWithSnapshot ? (
+                <Spinner className="size-3.5" />
+              ) : (
+                "With Snapshot"
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1090,8 +1437,9 @@ export function DesktopHub() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete workspace</AlertDialogTitle>
             <AlertDialogDescription>
-              Delete &quot;{deleteWorkspaceTarget?.name}&quot; permanently? This removes
-              the workspace from your account and stops its sandbox if running.
+              Delete &quot;{deleteWorkspaceTarget?.name}&quot; permanently? This
+              removes the workspace from your account and stops its sandbox if
+              running.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1106,11 +1454,7 @@ export function DesktopHub() {
                 void handleDeleteWorkspace();
               }}
             >
-              {deletingWorkspace ? (
-                <Spinner className="size-3.5" />
-              ) : (
-                "Delete"
-              )}
+              {deletingWorkspace ? <Spinner className="size-3.5" /> : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import useSWR from "swr";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 import { useWindowStore, flushWindowSync } from "@/stores/window-store";
 import { useDesktopStore } from "@/stores/desktop-store";
@@ -16,6 +17,7 @@ import {
 } from "@/components/display/RemoteDisplayClient";
 import { NotificationToasts } from "@/components/notifications/NotificationToasts";
 import { NotificationCenter } from "@/components/notifications/NotificationCenter";
+import { PageHeader } from "@/components/layout/page-header";
 import { useSyncSandboxTheme } from "@/lib/hooks/use-sync-sandbox-theme";
 import { useSandboxHeartbeat } from "@/lib/hooks/use-sandbox-heartbeat";
 import {
@@ -49,7 +51,7 @@ import { WindowSwitcher } from "@/components/desktop/WindowSwitcher";
 import type { SandboxInfo } from "@/types/sandbox";
 import { TerminalApp } from "@/components/apps/terminal/TerminalApp";
 import { reportDesktopError } from "@/lib/desktop/report-error";
-import { Settings2, Share2 } from "lucide-react";
+import { Settings2, Share2, Video } from "lucide-react";
 import { TerminalSettingsDialog } from "@/components/apps/terminal/TerminalSettingsDialog";
 import {
   DEFAULT_TERMINAL_SETTINGS,
@@ -57,6 +59,7 @@ import {
   saveSandboxTerminalSettings,
   type TerminalSettings,
 } from "@/lib/terminal/config";
+import { fetcher } from "@/lib/swr";
 
 interface DesktopShellProps {
   user: { id: string; email: string | null; name: string | null };
@@ -349,8 +352,26 @@ export function DesktopShell({
   const [shareLink, setShareLink] = useState<string | null>(null);
   const [shareCopying, setShareCopying] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
+  const [recordingBusy, setRecordingBusy] = useState(false);
+  const [recordingError, setRecordingError] = useState<string | null>(null);
   const [cliSettingsOpen, setCliSettingsOpen] = useState(false);
   const [cliSettingsVersion, setCliSettingsVersion] = useState(0);
+  const {
+    data: recordingState,
+    mutate: mutateRecordingState,
+  } = useSWR<{
+    active: { id: string } | null;
+    latestCompleted: { id: string } | null;
+  }>(
+    activeWorkspaceId ? `/api/recordings/active?workspaceId=${activeWorkspaceId}` : null,
+    fetcher,
+    {
+      refreshInterval: activeWorkspaceId ? 5_000 : 0,
+      revalidateOnFocus: true,
+    },
+  );
+  const activeRecordingId = recordingState?.active?.id ?? null;
+  const latestRecordingId = recordingState?.latestCompleted?.id ?? null;
   const cliActiveSandboxId =
     activeWorkspaceId ? sandboxes[activeWorkspaceId]?.sandboxId ?? null : null;
   const cliPreviewUrl = activeSandbox?.domains?.preview
@@ -519,6 +540,50 @@ export function DesktopShell({
       setShareCopying(false);
     }
   }, [shareLink, shareCopying]);
+
+  const handleStartRecording = useCallback(async () => {
+    if (!activeWorkspaceId || recordingBusy) return;
+    setRecordingBusy(true);
+    setRecordingError(null);
+    try {
+      const res = await fetch("/api/recordings/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspaceId: activeWorkspaceId }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(body.error ?? "Failed to start recording");
+      }
+      await mutateRecordingState();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to start recording";
+      setRecordingError(message);
+    } finally {
+      setRecordingBusy(false);
+    }
+  }, [activeWorkspaceId, mutateRecordingState, recordingBusy]);
+
+  const handleStopRecording = useCallback(async () => {
+    if (!activeRecordingId || recordingBusy) return;
+    setRecordingBusy(true);
+    setRecordingError(null);
+    try {
+      const res = await fetch(`/api/recordings/${activeRecordingId}/stop`, {
+        method: "POST",
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(body.error ?? "Failed to stop recording");
+      }
+      await mutateRecordingState();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to stop recording";
+      setRecordingError(message);
+    } finally {
+      setRecordingBusy(false);
+    }
+  }, [activeRecordingId, mutateRecordingState, recordingBusy]);
 
   // Strict slug route behavior: when store marks workspace non-active (for example
   // max-lifetime reached), immediately go back to the hub.
@@ -711,52 +776,101 @@ export function DesktopShell({
     );
   }
 
+  const desktopHeaderActions = (
+    <>
+      <Button
+        size="sm"
+        variant="secondary"
+        className="pointer-events-auto"
+        onClick={() => router.push("/desktop")}
+      >
+        Back to Workspaces
+      </Button>
+      <Button
+        size="sm"
+        variant="secondary"
+        className="pointer-events-auto"
+        disabled={!activeWorkspaceId || sharingWorkspace}
+        onClick={() => {
+          void handleShareWorkspace();
+        }}
+      >
+        {sharingWorkspace ? (
+          <Spinner className="size-3.5" />
+        ) : (
+          <Share2 className="mr-1.5 size-3.5" />
+        )}
+        Share
+      </Button>
+      <Button
+        size="sm"
+        variant="secondary"
+        className="pointer-events-auto"
+        disabled={!activeWorkspaceId || recordingBusy}
+        onClick={() => {
+          if (activeRecordingId) {
+            void handleStopRecording();
+          } else {
+            void handleStartRecording();
+          }
+        }}
+      >
+        {recordingBusy ? (
+          <Spinner className="size-3.5" />
+        ) : (
+          <Video className="mr-1.5 size-3.5" />
+        )}
+        {activeRecordingId ? "Stop Recording" : "Record"}
+      </Button>
+      <Button
+        size="sm"
+        variant="secondary"
+        className="pointer-events-auto"
+        disabled={!latestRecordingId}
+        onClick={() => {
+          if (latestRecordingId) {
+            router.push(`/recording/${latestRecordingId}`);
+          }
+        }}
+      >
+        Watch Last
+      </Button>
+      {activeWorkspaceExperience === "cli" ? (
+        <Button
+          size="sm"
+          variant="secondary"
+          className="pointer-events-auto"
+          onClick={() => setCliSettingsOpen(true)}
+        >
+          <Settings2 className="mr-1.5 size-3.5" />
+          Settings
+        </Button>
+      ) : null}
+      <Button
+        size="sm"
+        variant="secondary"
+        className="pointer-events-auto"
+        disabled={!activeWorkspaceId || returningToHub}
+        onClick={() => setShutdownDialogOpen(true)}
+      >
+        {returningToHub ? <Spinner className="size-3.5" /> : "Shutdown VM"}
+      </Button>
+    </>
+  );
+
   if (activeWorkspaceExperience === "cli") {
     return (
       <div className="fixed inset-0 overflow-hidden bg-black">
-        <div className="pointer-events-none fixed right-3 top-3 z-9500 flex gap-2 rounded-md bg-black/40 p-2 backdrop-blur-sm">
-          <Button
-            size="sm"
-            variant="secondary"
-            className="pointer-events-auto"
-            onClick={() => router.push("/desktop")}
-          >
-            Back to Workspaces
-          </Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            className="pointer-events-auto"
-            disabled={!activeWorkspaceId || sharingWorkspace}
-            onClick={() => {
-              void handleShareWorkspace();
-            }}
-          >
-            {sharingWorkspace ? (
-              <Spinner className="size-3.5" />
-            ) : (
-              <Share2 className="mr-1.5 size-3.5" />
-            )}
-            Share
-          </Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            className="pointer-events-auto"
-            onClick={() => setCliSettingsOpen(true)}
-          >
-            <Settings2 className="mr-1.5 size-3.5" />
-            Settings
-          </Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            className="pointer-events-auto"
-            disabled={!activeWorkspaceId || returningToHub}
-            onClick={() => setShutdownDialogOpen(true)}
-          >
-            {returningToHub ? <Spinner className="size-3.5" /> : "Shutdown VM"}
-          </Button>
+        <div className="pointer-events-none fixed inset-x-0 top-0 z-9500 bg-black/45 px-3 pt-2 backdrop-blur-sm">
+          <PageHeader
+            title={activeWorkspaceFromStore?.name ?? "Workspace"}
+            description="CLI workspace session"
+            actions={desktopHeaderActions}
+            showUserProfile={false}
+            variant="overlay"
+            className="border-0 px-0 pb-1"
+            actionsClassName="pointer-events-auto flex-wrap justify-start sm:justify-end"
+          />
         </div>
         <AlertDialog
           open={shutdownDialogOpen}
@@ -851,8 +965,14 @@ export function DesktopShell({
           <TerminalApp
             className="absolute inset-0 overflow-hidden"
             settings={cliTerminalSettings}
+            recordingId={activeRecordingId}
           />
         </div>
+        {recordingError ? (
+          <div className="pointer-events-none fixed left-3 top-3 z-9500 rounded bg-red-900/85 px-3 py-2 text-xs text-white">
+            {recordingError}
+          </div>
+        ) : null}
         <Dialog
           open={shareDialogOpen}
           onOpenChange={(open) => {
@@ -920,34 +1040,17 @@ export function DesktopShell({
 
   return (
     <div className="h-screen w-screen overflow-hidden">
-      {strictTargetRoute && (
-        <div className="pointer-events-none fixed right-3 top-3 z-9500 flex gap-2 rounded-md bg-black/35 p-2 backdrop-blur-sm">
-          <Button
-            size="sm"
-            variant="secondary"
-            className="pointer-events-auto"
-            onClick={() => router.push("/desktop")}
-          >
-            Back to Workspaces
-          </Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            className="pointer-events-auto"
-            disabled={!activeWorkspaceId || sharingWorkspace}
-            onClick={() => {
-              void handleShareWorkspace();
-            }}
-          >
-            {sharingWorkspace ? (
-              <Spinner className="size-3.5" />
-            ) : (
-              <Share2 className="mr-1.5 size-3.5" />
-            )}
-            Share
-          </Button>
-        </div>
-      )}
+      <div className="pointer-events-none fixed inset-x-0 top-0 z-9500 bg-black/35 px-3 pt-2 backdrop-blur-sm">
+        <PageHeader
+          title={activeWorkspaceFromStore?.name ?? "Workspace"}
+          description="GUI workspace session"
+          actions={desktopHeaderActions}
+          showUserProfile={false}
+          variant="overlay"
+          className="border-0 px-0 pb-1"
+          actionsClassName="pointer-events-auto flex-wrap justify-start sm:justify-end"
+        />
+      </div>
       <AlertDialog
         open={shutdownDialogOpen}
         onOpenChange={(open) => {

@@ -23,9 +23,11 @@ const RESTORE_CHUNK_SIZE = 8_192;
 export function TerminalApp({
   className,
   settings,
+  recordingId,
 }: {
   className?: string;
   settings?: TerminalSettings;
+  recordingId?: string | null;
   meta?: Record<string, unknown>;
 } = {}) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -52,6 +54,36 @@ export function TerminalApp({
     let serializeInterval: ReturnType<typeof setInterval> | null = null;
     let resizeObserver: ResizeObserver | null = null;
     let refitTimer: ReturnType<typeof setTimeout> | null = null;
+    let recordStartedAt = Date.now();
+    let recordingQueue: Array<{ tMs: number; eventType: string; payload: string }> = [];
+    let recordingFlushTimer: ReturnType<typeof setInterval> | null = null;
+
+    const flushRecordingQueue = () => {
+      if (!recordingId || recordingQueue.length === 0) return;
+      const batch = recordingQueue;
+      recordingQueue = [];
+      void fetch(`/api/recordings/${recordingId}/events`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ events: batch }),
+        keepalive: true,
+      }).catch(() => {
+        // best effort
+      });
+    };
+
+    const enqueueRecordingEvent = (eventType: string, payload: string) => {
+      if (!recordingId) return;
+      const trimmedPayload = payload.length > 20_000 ? payload.slice(0, 20_000) : payload;
+      recordingQueue.push({
+        tMs: Math.max(0, Date.now() - recordStartedAt),
+        eventType,
+        payload: trimmedPayload,
+      });
+      if (recordingQueue.length >= 20) {
+        flushRecordingQueue();
+      }
+    };
 
     // Defer setup to a requestAnimationFrame so that in React Strict Mode's
     // double-mount/unmount cycle the first invocation is cancelled before it
@@ -165,8 +197,12 @@ export function TerminalApp({
 
         ws.onopen = () => {
           if (disposed) return;
+          recordStartedAt = Date.now();
           if (!restoredFromCache) {
             safeWrite("\x1b[2J\x1b[H");
+          }
+          if (recordingId && !recordingFlushTimer) {
+            recordingFlushTimer = setInterval(flushRecordingQueue, 750);
           }
         };
 
@@ -174,11 +210,18 @@ export function TerminalApp({
           if (disposed) return;
           if (typeof event.data === "string") {
             safeWrite(event.data);
+            enqueueRecordingEvent("stdout", event.data);
           } else if (event.data instanceof ArrayBuffer) {
+            const chunk = new TextDecoder().decode(new Uint8Array(event.data));
             safeWrite(new Uint8Array(event.data));
+            enqueueRecordingEvent("stdout", chunk);
           } else if (event.data instanceof Blob) {
             event.data.arrayBuffer().then((buf: ArrayBuffer) => {
-              if (!disposed) safeWrite(new Uint8Array(buf));
+              if (!disposed) {
+                safeWrite(new Uint8Array(buf));
+                const chunk = new TextDecoder().decode(new Uint8Array(buf));
+                enqueueRecordingEvent("stdout", chunk);
+              }
             });
           }
         };
@@ -206,6 +249,7 @@ export function TerminalApp({
         t.onData((data: string) => {
           if (ws.readyState === WebSocket.OPEN) {
             ws.send(data);
+            enqueueRecordingEvent("stdin", data);
           }
         });
 
@@ -214,6 +258,13 @@ export function TerminalApp({
             ws.send(
               JSON.stringify({
                 type: "resize",
+                cols: size.cols,
+                rows: size.rows,
+              }),
+            );
+            enqueueRecordingEvent(
+              "resize",
+              JSON.stringify({
                 cols: size.cols,
                 rows: size.rows,
               }),
@@ -282,13 +333,17 @@ export function TerminalApp({
       }
 
       if (serializeInterval) clearInterval(serializeInterval);
+      if (recordingFlushTimer) {
+        clearInterval(recordingFlushTimer);
+      }
+      flushRecordingQueue();
       if (refitTimer) clearTimeout(refitTimer);
       resizeObserver?.disconnect();
       ws?.close();
       fitAddon?.dispose();
       term?.dispose();
     };
-  }, [servicesDomain, activeWorkspaceId, resolvedSettings, resolvedFontFamily]);
+  }, [servicesDomain, activeWorkspaceId, resolvedSettings, resolvedFontFamily, recordingId]);
 
   if (!activeWorkspaceId || !sandbox) {
     return (

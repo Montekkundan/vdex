@@ -7,7 +7,13 @@ import Link from "next/link";
 import { MainDataTable } from "@/components/ui/main-data-table";
 import { PageHeader } from "@/components/layout/page-header";
 import { AppPageFooter } from "@/components/layout/app-page-footer";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -24,7 +30,15 @@ import { fetcher } from "@/lib/swr";
 
 type SandboxListItem = {
   id: string;
-  status: "aborted" | "pending" | "running" | "stopping" | "stopped" | "failed" | "snapshotting";
+  status:
+    | "aborted"
+    | "pending"
+    | "running"
+    | "stopping"
+    | "stopped"
+    | "failed"
+    | "snapshotting";
+  stopReason?: string | null;
   launchType?: "warm_pool_policy" | "warm_pool" | "cold_boot";
   runtime: string;
   vcpus: number;
@@ -66,6 +80,11 @@ function formatBytes(bytes: number) {
   return `${value.toFixed(idx === 0 ? 0 : 2)} ${units[idx]}`;
 }
 
+function formatStopReason(reason: string | null | undefined): string {
+  if (!reason) return "unknown";
+  return reason.replaceAll("_", " ");
+}
+
 const SANDBOX_BADGE: Record<string, string> = {
   running: "bg-green-100 text-green-900 border-green-300",
   pending: "bg-blue-100 text-blue-900 border-blue-300",
@@ -96,8 +115,12 @@ export function SandboxesClient() {
   const [inspectJson, setInspectJson] = useState("");
   const [showStoppedSandboxes, setShowStoppedSandboxes] = useState(false);
   const [showDeletedSnapshots, setShowDeletedSnapshots] = useState(false);
-  const [selectedSandboxes, setSelectedSandboxes] = useState<SandboxListItem[]>([]);
-  const [selectedSnapshots, setSelectedSnapshots] = useState<SnapshotListItem[]>([]);
+  const [selectedSandboxes, setSelectedSandboxes] = useState<SandboxListItem[]>(
+    [],
+  );
+  const [selectedSnapshots, setSelectedSnapshots] = useState<
+    SnapshotListItem[]
+  >([]);
   const [isPageVisible, setIsPageVisible] = useState(
     typeof document === "undefined" ? true : !document.hidden,
   );
@@ -105,7 +128,8 @@ export function SandboxesClient() {
   useEffect(() => {
     const onVisibilityChange = () => setIsPageVisible(!document.hidden);
     document.addEventListener("visibilitychange", onVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+    return () =>
+      document.removeEventListener("visibilitychange", onVisibilityChange);
   }, []);
 
   const {
@@ -114,11 +138,13 @@ export function SandboxesClient() {
     mutate: mutateSandboxes,
   } = useSWR<SandboxesResponse>("/api/vercel/sandboxes", fetcher, {
     refreshInterval: (latestData) => {
-      const items = (latestData as SandboxesResponse | undefined)?.sandboxes ?? [];
-      const hasActiveTransitions = items.some((sandbox) =>
-        sandbox.status === "pending" ||
-        sandbox.status === "stopping" ||
-        sandbox.status === "snapshotting",
+      const items =
+        (latestData as SandboxesResponse | undefined)?.sandboxes ?? [];
+      const hasActiveTransitions = items.some(
+        (sandbox) =>
+          sandbox.status === "pending" ||
+          sandbox.status === "stopping" ||
+          sandbox.status === "snapshotting",
       );
 
       if (!isPageVisible) return 60000;
@@ -127,13 +153,17 @@ export function SandboxesClient() {
     revalidateOnFocus: true,
   });
 
-  const sandboxes = useMemo(() => sandboxesData?.sandboxes ?? [], [sandboxesData]);
+  const sandboxes = useMemo(
+    () => sandboxesData?.sandboxes ?? [],
+    [sandboxesData],
+  );
   const hasActiveTransitions = useMemo(
     () =>
-      sandboxes.some((sandbox) =>
-        sandbox.status === "pending" ||
-        sandbox.status === "stopping" ||
-        sandbox.status === "snapshotting",
+      sandboxes.some(
+        (sandbox) =>
+          sandbox.status === "pending" ||
+          sandbox.status === "stopping" ||
+          sandbox.status === "snapshotting",
       ),
     [sandboxes],
   );
@@ -143,11 +173,18 @@ export function SandboxesClient() {
     isLoading: snapshotsLoading,
     mutate: mutateSnapshots,
   } = useSWR<SnapshotsResponse>("/api/vercel/snapshots", fetcher, {
-    refreshInterval: !isPageVisible ? 60000 : hasActiveTransitions ? 10000 : 60000,
+    refreshInterval: !isPageVisible
+      ? 60000
+      : hasActiveTransitions
+        ? 10000
+        : 60000,
     revalidateOnFocus: true,
   });
 
-  const snapshots = useMemo(() => snapshotsData?.snapshots ?? [], [snapshotsData]);
+  const snapshots = useMemo(
+    () => snapshotsData?.snapshots ?? [],
+    [snapshotsData],
+  );
   const visibleSandboxes = useMemo(
     () =>
       showStoppedSandboxes
@@ -168,13 +205,17 @@ export function SandboxesClient() {
     (sum, snap) => sum + (snap.sizeBytes ?? 0),
     0,
   );
-  const runningSandboxes = sandboxes.filter((s) => s.status === "running").length;
+  const runningSandboxes = sandboxes.filter(
+    (s) => s.status === "running",
+  ).length;
   const activeSnapshotCount = createdSnapshots.length;
-  const avgSnapshotBytes = activeSnapshotCount > 0
-    ? Math.round(totalSnapshotBytes / activeSnapshotCount)
-    : 0;
+  const avgSnapshotBytes =
+    activeSnapshotCount > 0
+      ? Math.round(totalSnapshotBytes / activeSnapshotCount)
+      : 0;
   const stoppableSelectedCount = selectedSandboxes.filter(
-    (s) => s.status !== "stopped" && s.status !== "failed" && s.status !== "aborted",
+    (s) =>
+      s.status !== "stopped" && s.status !== "failed" && s.status !== "aborted",
   ).length;
   const deletableSelectedCount = selectedSnapshots.filter(
     (s) => s.status !== "deleted",
@@ -190,29 +231,43 @@ export function SandboxesClient() {
     setSelectedSnapshots((prev) => prev.filter((s) => visibleIds.has(s.id)));
   }, [visibleSnapshots]);
 
-  const handleSandboxSelectionChange = useCallback((rows: SandboxListItem[]) => {
-    setSelectedSandboxes((prev) => {
-      if (prev.length === rows.length && prev.every((item, idx) => item.id === rows[idx]?.id)) {
-        return prev;
-      }
-      return rows;
-    });
-  }, []);
+  const handleSandboxSelectionChange = useCallback(
+    (rows: SandboxListItem[]) => {
+      setSelectedSandboxes((prev) => {
+        if (
+          prev.length === rows.length &&
+          prev.every((item, idx) => item.id === rows[idx]?.id)
+        ) {
+          return prev;
+        }
+        return rows;
+      });
+    },
+    [],
+  );
 
-  const handleSnapshotSelectionChange = useCallback((rows: SnapshotListItem[]) => {
-    setSelectedSnapshots((prev) => {
-      if (prev.length === rows.length && prev.every((item, idx) => item.id === rows[idx]?.id)) {
-        return prev;
-      }
-      return rows;
-    });
-  }, []);
+  const handleSnapshotSelectionChange = useCallback(
+    (rows: SnapshotListItem[]) => {
+      setSelectedSnapshots((prev) => {
+        if (
+          prev.length === rows.length &&
+          prev.every((item, idx) => item.id === rows[idx]?.id)
+        ) {
+          return prev;
+        }
+        return rows;
+      });
+    },
+    [],
+  );
 
   async function stopSandbox(id: string) {
     setBusy(`stop:${id}`);
     setError(null);
     try {
-      const res = await fetch(`/api/vercel/sandboxes/${id}/stop`, { method: "POST" });
+      const res = await fetch(`/api/vercel/sandboxes/${id}/stop`, {
+        method: "POST",
+      });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error || "Failed to stop sandbox");
       await mutateSandboxes();
@@ -227,12 +282,16 @@ export function SandboxesClient() {
     setBusy(`snapshot:${id}`);
     setError(null);
     try {
-      const res = await fetch(`/api/vercel/sandboxes/${id}/snapshot`, { method: "POST" });
+      const res = await fetch(`/api/vercel/sandboxes/${id}/snapshot`, {
+        method: "POST",
+      });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error || "Failed to snapshot sandbox");
       await Promise.all([mutateSandboxes(), mutateSnapshots()]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to snapshot sandbox");
+      setError(
+        err instanceof Error ? err.message : "Failed to snapshot sandbox",
+      );
     } finally {
       setBusy(null);
     }
@@ -244,12 +303,15 @@ export function SandboxesClient() {
     try {
       const res = await fetch(`/api/vercel/sandboxes/${id}`);
       const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || "Failed to fetch sandbox details");
+      if (!res.ok)
+        throw new Error(body.error || "Failed to fetch sandbox details");
       setInspectTitle(`Sandbox ${id}`);
       setInspectJson(JSON.stringify(body, null, 2));
       setInspectOpen(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to inspect sandbox");
+      setError(
+        err instanceof Error ? err.message : "Failed to inspect sandbox",
+      );
     } finally {
       setBusy(null);
     }
@@ -261,12 +323,15 @@ export function SandboxesClient() {
     try {
       const res = await fetch(`/api/vercel/snapshots/${id}`);
       const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || "Failed to fetch snapshot details");
+      if (!res.ok)
+        throw new Error(body.error || "Failed to fetch snapshot details");
       setInspectTitle(`Snapshot ${id}`);
       setInspectJson(JSON.stringify(body, null, 2));
       setInspectOpen(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to inspect snapshot");
+      setError(
+        err instanceof Error ? err.message : "Failed to inspect snapshot",
+      );
     } finally {
       setBusy(null);
     }
@@ -276,12 +341,16 @@ export function SandboxesClient() {
     setBusy(`delete:${id}`);
     setError(null);
     try {
-      const res = await fetch(`/api/vercel/snapshots/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/vercel/snapshots/${id}`, {
+        method: "DELETE",
+      });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error || "Failed to delete snapshot");
       await mutateSnapshots();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete snapshot");
+      setError(
+        err instanceof Error ? err.message : "Failed to delete snapshot",
+      );
     } finally {
       setBusy(null);
     }
@@ -293,7 +362,10 @@ export function SandboxesClient() {
     setError(null);
     try {
       const stoppable = selectedSandboxes.filter(
-        (s) => s.status !== "stopped" && s.status !== "failed" && s.status !== "aborted",
+        (s) =>
+          s.status !== "stopped" &&
+          s.status !== "failed" &&
+          s.status !== "aborted",
       );
       if (stoppable.length === 0) {
         setError("Selected sandboxes are already stopped/failed.");
@@ -305,7 +377,9 @@ export function SandboxesClient() {
         ),
       );
       const failures = results.filter(
-        (result) => result.status === "rejected" || (result.status === "fulfilled" && !result.value.ok),
+        (result) =>
+          result.status === "rejected" ||
+          (result.status === "fulfilled" && !result.value.ok),
       ).length;
       if (failures > 0) {
         setError(`${failures} sandbox stop action(s) failed.`);
@@ -313,7 +387,11 @@ export function SandboxesClient() {
       await mutateSandboxes();
       setSelectedSandboxes([]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to stop selected sandboxes");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to stop selected sandboxes",
+      );
     } finally {
       setBusy(null);
     }
@@ -335,7 +413,9 @@ export function SandboxesClient() {
         ),
       );
       const failures = results.filter(
-        (result) => result.status === "rejected" || (result.status === "fulfilled" && !result.value.ok),
+        (result) =>
+          result.status === "rejected" ||
+          (result.status === "fulfilled" && !result.value.ok),
       ).length;
       if (failures > 0) {
         setError(`${failures} snapshot delete action(s) failed.`);
@@ -343,7 +423,11 @@ export function SandboxesClient() {
       await mutateSnapshots();
       setSelectedSnapshots([]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete selected snapshots");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to delete selected snapshots",
+      );
     } finally {
       setBusy(null);
     }
@@ -363,10 +447,23 @@ export function SandboxesClient() {
       cell: ({ row }) => (
         <Badge
           variant="outline"
-          className={SANDBOX_BADGE[row.original.status] ?? SANDBOX_BADGE.stopped}
+          className={
+            SANDBOX_BADGE[row.original.status] ?? SANDBOX_BADGE.stopped
+          }
         >
           {row.original.status}
         </Badge>
+      ),
+    },
+    {
+      accessorKey: "stopReason",
+      header: "Reason",
+      cell: ({ row }) => (
+        <span className="block max-w-[220px] truncate text-copy-12 text-gray-700">
+          {row.original.status === "running"
+            ? ""
+            : formatStopReason(row.original.stopReason)}
+        </span>
       ),
     },
     {
@@ -377,7 +474,9 @@ export function SandboxesClient() {
         return (
           <Badge
             variant="outline"
-            className={LAUNCH_TYPE_BADGE[launchType] ?? LAUNCH_TYPE_BADGE.cold_boot}
+            className={
+              LAUNCH_TYPE_BADGE[launchType] ?? LAUNCH_TYPE_BADGE.cold_boot
+            }
           >
             {launchType}
           </Badge>
@@ -416,7 +515,11 @@ export function SandboxesClient() {
               disabled={!!busy}
               onClick={() => inspectSandbox(s.id)}
             >
-              {busy === `inspect-sandbox:${s.id}` ? <Spinner className="size-3.5" /> : "Inspect"}
+              {busy === `inspect-sandbox:${s.id}` ? (
+                <Spinner className="size-3.5" />
+              ) : (
+                "Inspect"
+              )}
             </Button>
             <Button
               size="sm"
@@ -424,15 +527,28 @@ export function SandboxesClient() {
               disabled={!!busy}
               onClick={() => snapshotSandbox(s.id)}
             >
-              {busy === `snapshot:${s.id}` ? <Spinner className="size-3.5" /> : "Snapshot"}
+              {busy === `snapshot:${s.id}` ? (
+                <Spinner className="size-3.5" />
+              ) : (
+                "Snapshot"
+              )}
             </Button>
             <Button
               size="sm"
               variant="destructive"
-              disabled={!!busy || s.status === "stopped" || s.status === "failed" || s.status === "aborted"}
+              disabled={
+                !!busy ||
+                s.status === "stopped" ||
+                s.status === "failed" ||
+                s.status === "aborted"
+              }
               onClick={() => stopSandbox(s.id)}
             >
-              {busy === `stop:${s.id}` ? <Spinner className="size-3.5" /> : "Stop"}
+              {busy === `stop:${s.id}` ? (
+                <Spinner className="size-3.5" />
+              ) : (
+                "Stop"
+              )}
             </Button>
           </div>
         );
@@ -454,7 +570,9 @@ export function SandboxesClient() {
       cell: ({ row }) => (
         <Badge
           variant="outline"
-          className={SNAPSHOT_BADGE[row.original.status] ?? SNAPSHOT_BADGE.deleted}
+          className={
+            SNAPSHOT_BADGE[row.original.status] ?? SNAPSHOT_BADGE.deleted
+          }
         >
           {row.original.status}
         </Badge>
@@ -492,7 +610,11 @@ export function SandboxesClient() {
               disabled={!!busy}
               onClick={() => inspectSnapshot(s.id)}
             >
-              {busy === `inspect-snapshot:${s.id}` ? <Spinner className="size-3.5" /> : "Inspect"}
+              {busy === `inspect-snapshot:${s.id}` ? (
+                <Spinner className="size-3.5" />
+              ) : (
+                "Inspect"
+              )}
             </Button>
             <Button
               size="sm"
@@ -500,7 +622,11 @@ export function SandboxesClient() {
               disabled={!!busy || s.status === "deleted"}
               onClick={() => deleteSnapshot(s.id)}
             >
-              {busy === `delete:${s.id}` ? <Spinner className="size-3.5" /> : "Delete"}
+              {busy === `delete:${s.id}` ? (
+                <Spinner className="size-3.5" />
+              ) : (
+                "Delete"
+              )}
             </Button>
           </div>
         );
@@ -519,16 +645,21 @@ export function SandboxesClient() {
               actions={
                 <div className="flex items-center gap-2">
                   <Button asChild variant="secondary">
-                    <Link href="/desktop">Go to Desktop</Link>
+                    <Link href="/desktop">Desktop</Link>
                   </Button>
                   <Button asChild variant="secondary">
-                    <Link href="/profiles">Go to Profiles</Link>
+                    <Link href="/profiles">Profiles</Link>
+                  </Button>
+                  <Button asChild variant="secondary">
+                    <Link href="/recordings">Recordings</Link>
                   </Button>
                 </div>
               }
             />
 
-            {error ? <p className="text-copy-13 text-red-900">{error}</p> : null}
+            {error ? (
+              <p className="text-copy-13 text-red-900">{error}</p>
+            ) : null}
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <Card className="bg-background-200">
                 <CardHeader className="pb-2">
@@ -580,7 +711,11 @@ export function SandboxesClient() {
                     disabled={!!busy || stoppableSelectedCount === 0}
                     onClick={() => void stopSelectedSandboxes()}
                   >
-                    {busy === "bulk-stop" ? <Spinner className="size-3.5" /> : `Stop selected (${stoppableSelectedCount})`}
+                    {busy === "bulk-stop" ? (
+                      <Spinner className="size-3.5" />
+                    ) : (
+                      `Stop selected (${stoppableSelectedCount})`
+                    )}
                   </Button>
                   <Button
                     size="sm"
@@ -627,7 +762,11 @@ export function SandboxesClient() {
                     disabled={!!busy || deletableSelectedCount === 0}
                     onClick={() => void deleteSelectedSnapshots()}
                   >
-                    {busy === "bulk-delete" ? <Spinner className="size-3.5" /> : `Delete selected (${deletableSelectedCount})`}
+                    {busy === "bulk-delete" ? (
+                      <Spinner className="size-3.5" />
+                    ) : (
+                      `Delete selected (${deletableSelectedCount})`
+                    )}
                   </Button>
                   <Button
                     size="sm"
@@ -658,9 +797,7 @@ export function SandboxesClient() {
         <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle>{inspectTitle}</DialogTitle>
-            <DialogDescription>
-              Raw API response.
-            </DialogDescription>
+            <DialogDescription>Raw API response.</DialogDescription>
           </DialogHeader>
           <pre className="max-h-[60vh] overflow-auto rounded-md border bg-background p-3 text-copy-12">
             {inspectJson}
