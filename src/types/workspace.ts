@@ -5,6 +5,16 @@ export type WorkspaceStatus =
   | "creating"
   | "error";
 
+export type WorkspaceStopReason =
+  | "user_stop"
+  | "snapshot_created"
+  | "timeout_expired"
+  | "display_start_timeout"
+  | "sandbox_unreachable"
+  | "sandbox_inactive"
+  | "admin_reconcile"
+  | "unknown";
+
 export type ProviderId = "vercel" | "azure" | "gcp";
 export type WorkspaceExperience = "gui" | "cli";
 export type DisplayClient =
@@ -27,7 +37,12 @@ export interface Workspace {
   experience: WorkspaceExperience;
   displayClient: DisplayClient;
   sizeProfile: SizeProfileId;
+  timeoutMs: number;
+  runtimeStartedAt: string | null;
   status: WorkspaceStatus;
+  stopReason: WorkspaceStopReason | null;
+  stoppedAt: string | null;
+  lastSandboxId: string | null;
   sandboxDomain: string | null;
   background: string | null;
   shareEnabled: boolean;

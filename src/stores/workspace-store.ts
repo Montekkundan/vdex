@@ -17,6 +17,7 @@ export interface CreateWorkspaceInput {
   experience?: WorkspaceExperience;
   displayClient?: DisplayClient;
   sizeProfile?: SizeProfileId;
+  timeoutMs?: number;
   snapshotSource?: "platform_default" | "user_snapshot" | "explicit_snapshot_id";
   snapshotRefId?: string;
   snapshotId?: string;
@@ -103,7 +104,15 @@ function markCreating(
   set((state) => ({
     creatingStatus: statusMessage,
     workspaces: state.workspaces.map((w) =>
-      w.id === id ? { ...w, status: "creating" as const, sandboxId: null } : w,
+      w.id === id
+        ? {
+            ...w,
+            status: "creating" as const,
+            sandboxId: null,
+            stopReason: null,
+            stoppedAt: null,
+          }
+        : w,
     ),
     sandboxes: Object.fromEntries(
       Object.entries(state.sandboxes).filter(([k]) => k !== id),
@@ -186,7 +195,14 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       ),
       workspaces: state.workspaces.map((ws) =>
         ws.id === workspaceId
-          ? { ...ws, status: "stopped" as const, sandboxId: null }
+          ? {
+              ...ws,
+              status: "stopped" as const,
+              stopReason: "sandbox_unreachable",
+              stoppedAt: new Date().toISOString(),
+              lastSandboxId: ws.sandboxId ?? ws.lastSandboxId,
+              sandboxId: null,
+            }
           : ws,
       ),
     }));
@@ -205,6 +221,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
           experience: input?.experience,
           displayClient: input?.displayClient,
           sizeProfile: input?.sizeProfile,
+          timeoutMs: input?.timeoutMs,
           snapshotSource: input?.snapshotSource,
           snapshotRefId: input?.snapshotRefId,
           snapshotId: input?.snapshotId,
@@ -284,6 +301,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
           ? {
               ...ws,
               status: "stopped" as const,
+              stopReason: createSnapshot ? "snapshot_created" : "user_stop",
+              stoppedAt: new Date().toISOString(),
+              lastSandboxId: ws.sandboxId ?? ws.lastSandboxId,
               sandboxId: null,
               snapshotId: createSnapshot ? snapshotId : null,
             }
@@ -398,7 +418,15 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     set((state) => ({
       workspaces: state.workspaces.map((w) =>
         w.id === id
-          ? { ...w, status: "snapshotted" as const, sandboxId: null, snapshotId }
+          ? {
+              ...w,
+              status: "snapshotted" as const,
+              stopReason: "snapshot_created",
+              stoppedAt: new Date().toISOString(),
+              lastSandboxId: w.sandboxId ?? w.lastSandboxId,
+              sandboxId: null,
+              snapshotId,
+            }
           : w,
       ),
       sandboxes: Object.fromEntries(

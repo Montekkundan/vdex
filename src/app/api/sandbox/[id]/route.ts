@@ -8,6 +8,7 @@ import { markWorkspaceStopped } from "@/lib/sandbox/mark-workspace-stopped";
 import { isLiveSandboxStatus } from "@/lib/sandbox/status";
 import { getDisplayHealthPath } from "@/lib/display-clients";
 import { isValidDisplayClient } from "@/lib/runtime/profiles";
+import type { WorkspaceStopReason } from "@/types/workspace";
 
 async function isHttpEndpointReady(url: string, timeoutMs = 2000): Promise<boolean> {
   const controller = new AbortController();
@@ -20,6 +21,25 @@ async function isHttpEndpointReady(url: string, timeoutMs = 2000): Promise<boole
   } finally {
     clearTimeout(timer);
   }
+}
+
+function isExpiredSandboxError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const msg = err.message.toLowerCase();
+  return (
+    msg.includes("expired") ||
+    msg.includes("timeout") ||
+    msg.includes("410") ||
+    msg.includes("gone")
+  );
+}
+
+function inferTimeoutFromWorkspace(workspace: {
+  runtimeStartedAt: Date | null;
+  timeoutMs: number;
+}): boolean {
+  if (!workspace.runtimeStartedAt) return false;
+  return Date.now() >= workspace.runtimeStartedAt.getTime() + workspace.timeoutMs;
 }
 
 export async function GET(
@@ -39,7 +59,9 @@ export async function GET(
         sandbox = fetched;
       } else {
         sandboxLost = true;
-        await markWorkspaceStopped(workspace.id);
+        const reason: WorkspaceStopReason =
+          fetched.status === "stopped" ? "timeout_expired" : "sandbox_inactive";
+        await markWorkspaceStopped(workspace.id, reason);
       }
     } catch (err) {
       // Sandbox is dead (expired, crashed, etc.)
@@ -50,7 +72,11 @@ export async function GET(
         ` Error: ${err instanceof Error ? err.message : err}`,
       );
       sandboxLost = true;
-      await markWorkspaceStopped(workspace.id);
+      const reason: WorkspaceStopReason =
+        isExpiredSandboxError(err) || inferTimeoutFromWorkspace(workspace)
+          ? "timeout_expired"
+          : "sandbox_unreachable";
+      await markWorkspaceStopped(workspace.id, reason);
     }
   }
 

@@ -15,8 +15,9 @@ export const vercelProviderDriver: ProviderDriver = {
     resources,
     displayClient,
     experience,
+    timeoutMs,
   }) {
-    return createSandbox(snapshotId, resources, displayClient, experience);
+    return createSandbox(snapshotId, resources, displayClient, experience, timeoutMs);
   },
   async getRuntime(sandboxId) {
     return getSandbox(sandboxId);

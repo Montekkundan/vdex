@@ -16,6 +16,7 @@ export type CreateWorkspaceRuntimeParams = {
   resources: RuntimeResources;
   displayClient: DisplayClient;
   experience: WorkspaceExperience;
+  timeoutMs: number;
 };
 
 export type ProviderErrorCode =

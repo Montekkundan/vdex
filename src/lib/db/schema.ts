@@ -6,6 +6,7 @@ import {
   jsonb,
   pgEnum,
   integer,
+  bigint,
   boolean,
   uniqueIndex,
   index,
@@ -59,13 +60,18 @@ export const workspaces = pgTable(
       .notNull(),
     name: text("name").notNull(),
     sandboxId: text("sandbox_id"),
+    lastSandboxId: text("last_sandbox_id"),
     snapshotId: text("snapshot_id"),
     icon: text("icon").default("terminal").notNull(),
     provider: text("provider").default("vercel").notNull(),
     experience: text("experience").default("gui").notNull(),
     displayClient: text("display_client").default("xpra").notNull(),
     sizeProfile: text("size_profile").default("small_2c4g").notNull(),
+    timeoutMs: integer("timeout_ms").default(45 * 60 * 1000).notNull(),
+    runtimeStartedAt: timestamp("runtime_started_at"),
     status: workspaceStatusEnum("status").default("stopped").notNull(),
+    stopReason: text("stop_reason"),
+    stoppedAt: timestamp("stopped_at"),
     windowState: jsonb("window_state"),
     background: text("background"),
     shareEnabled: boolean("share_enabled").default(false).notNull(),
@@ -170,6 +176,27 @@ export const incidentStatusEnum = pgEnum("incident_status", [
 
 export const adminActionResultEnum = pgEnum("admin_action_result", [
   "success",
+  "failed",
+]);
+
+export const recordingModeEnum = pgEnum("recording_mode", ["cli", "gui"]);
+export const recordingStatusEnum = pgEnum("recording_status", [
+  "idle",
+  "recording",
+  "finalizing",
+  "completed",
+  "failed",
+  "expired",
+]);
+export const recordingVisibilityEnum = pgEnum("recording_visibility", [
+  "private",
+  "public",
+]);
+export const recordingMp4StatusEnum = pgEnum("recording_mp4_status", [
+  "not_requested",
+  "queued",
+  "processing",
+  "ready",
   "failed",
 ]);
 
@@ -464,6 +491,106 @@ export const apiRequestFailures = pgTable(
   }),
 );
 
+export const workspaceRecordings = pgTable(
+  "workspace_recordings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    workspaceId: uuid("workspace_id").references(() => workspaces.id, {
+      onDelete: "set null",
+    }),
+    sandboxId: text("sandbox_id"),
+    mode: recordingModeEnum("mode").notNull(),
+    status: recordingStatusEnum("status").default("recording").notNull(),
+    visibility: recordingVisibilityEnum("visibility").default("private").notNull(),
+    title: text("title"),
+    publicId: text("public_id"),
+    mp4Status: recordingMp4StatusEnum("mp4_status").default("not_requested").notNull(),
+    mp4StorageKey: text("mp4_storage_key"),
+    mp4SizeBytes: bigint("mp4_size_bytes", { mode: "number" }),
+    mp4ReadyAt: timestamp("mp4_ready_at"),
+    mp4Error: text("mp4_error"),
+    startedAt: timestamp("started_at").defaultNow().notNull(),
+    endedAt: timestamp("ended_at"),
+    durationMs: integer("duration_ms"),
+    expiresAt: timestamp("expires_at").notNull(),
+    sizeBytes: bigint("size_bytes", { mode: "number" }).default(0).notNull(),
+    meta: jsonb("meta"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    recordingsPublicIdUnique: uniqueIndex("workspace_recordings_public_id_unique").on(
+      table.publicId,
+    ),
+    recordingsUserCreatedIdx: index("workspace_recordings_user_created_idx").on(
+      table.userId,
+      table.createdAt,
+    ),
+    recordingsWorkspaceCreatedIdx: index("workspace_recordings_workspace_created_idx").on(
+      table.workspaceId,
+      table.createdAt,
+    ),
+    recordingsStatusExpiresIdx: index("workspace_recordings_status_expires_idx").on(
+      table.status,
+      table.expiresAt,
+    ),
+    recordingsUserMp4StatusIdx: index("workspace_recordings_user_mp4_status_idx").on(
+      table.userId,
+      table.mp4Status,
+    ),
+  }),
+);
+
+export const recordingTerminalEvents = pgTable(
+  "recording_terminal_events",
+  {
+    id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+    recordingId: uuid("recording_id")
+      .references(() => workspaceRecordings.id, { onDelete: "cascade" })
+      .notNull(),
+    tMs: integer("t_ms").notNull(),
+    eventType: text("event_type").notNull(),
+    payload: text("payload").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    terminalEventsRecordingTimeIdx: index("recording_terminal_events_recording_time_idx").on(
+      table.recordingId,
+      table.tMs,
+    ),
+  }),
+);
+
+export const recordingVideoChunks = pgTable(
+  "recording_video_chunks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    recordingId: uuid("recording_id")
+      .references(() => workspaceRecordings.id, { onDelete: "cascade" })
+      .notNull(),
+    seq: integer("seq").notNull(),
+    tStartMs: integer("t_start_ms").notNull(),
+    tEndMs: integer("t_end_ms").notNull(),
+    storageKey: text("storage_key").notNull(),
+    byteSize: bigint("byte_size", { mode: "number" }).default(0).notNull(),
+    mimeType: text("mime_type").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    videoChunksRecordingSeqUnique: uniqueIndex("recording_video_chunks_recording_seq_unique").on(
+      table.recordingId,
+      table.seq,
+    ),
+    videoChunksRecordingStartIdx: index("recording_video_chunks_recording_start_idx").on(
+      table.recordingId,
+      table.tStartMs,
+    ),
+  }),
+);
+
 // Global config table for things like the golden snapshot ID
 export const config = pgTable("config", {
   key: text("key").primaryKey(),
@@ -496,3 +623,9 @@ export type AdminActionAuditRow = typeof adminActionAudit.$inferSelect;
 export type NewAdminActionAudit = typeof adminActionAudit.$inferInsert;
 export type ApiRequestFailureRow = typeof apiRequestFailures.$inferSelect;
 export type NewApiRequestFailure = typeof apiRequestFailures.$inferInsert;
+export type WorkspaceRecordingRow = typeof workspaceRecordings.$inferSelect;
+export type NewWorkspaceRecording = typeof workspaceRecordings.$inferInsert;
+export type RecordingTerminalEventRow = typeof recordingTerminalEvents.$inferSelect;
+export type NewRecordingTerminalEvent = typeof recordingTerminalEvents.$inferInsert;
+export type RecordingVideoChunkRow = typeof recordingVideoChunks.$inferSelect;
+export type NewRecordingVideoChunk = typeof recordingVideoChunks.$inferInsert;

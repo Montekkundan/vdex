@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { snapshotSandbox } from "@/lib/sandbox/client";
 import { getAuthedWorkspace } from "@/lib/api/get-authed-workspace";
 import { enforceRateLimit, RATE_LIMIT_IDS } from "@/lib/rate-limit";
+import { markWorkspaceStoppedWithOptions } from "@/lib/sandbox/mark-workspace-stopped";
 
 export async function POST(
   req: Request,
@@ -31,15 +32,14 @@ export async function POST(
 
   try {
     const snapshotId = await snapshotSandbox(workspace.sandboxId);
-
+    await markWorkspaceStoppedWithOptions(workspace.id, {
+      snapshotId,
+      sandboxId: workspace.sandboxId,
+      reason: "snapshot_created",
+    });
     await db
       .update(workspaces)
-      .set({
-        status: "snapshotted",
-        sandboxId: null,
-        snapshotId,
-        updatedAt: new Date(),
-      })
+      .set({ status: "snapshotted" })
       .where(eq(workspaces.id, workspace.id));
 
     return NextResponse.json({ snapshotId });

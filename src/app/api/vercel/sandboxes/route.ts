@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { Sandbox } from "@vercel/sandbox";
-import { inArray } from "drizzle-orm";
+import { inArray, or } from "drizzle-orm";
 import { getSession } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
-import { warmPool } from "@/lib/db/schema";
+import { warmPool, workspaces } from "@/lib/db/schema";
 
 export async function GET() {
   const session = await getSession();
@@ -33,6 +33,36 @@ export async function GET() {
       poolRows.map((row) => [row.sandboxId, row]),
     );
 
+    const workspaceRows = sandboxIds.length > 0
+      ? await db
+          .select({
+            sandboxId: workspaces.sandboxId,
+            lastSandboxId: workspaces.lastSandboxId,
+            stopReason: workspaces.stopReason,
+            updatedAt: workspaces.updatedAt,
+          })
+          .from(workspaces)
+          .where(
+            or(
+              inArray(workspaces.sandboxId, sandboxIds),
+              inArray(workspaces.lastSandboxId, sandboxIds),
+            ),
+          )
+      : [];
+    const reasonBySandboxId = new Map<string, { reason: string | null; updatedAtMs: number }>();
+    for (const row of workspaceRows) {
+      const candidateId = row.sandboxId ?? row.lastSandboxId;
+      if (!candidateId) continue;
+      const prev = reasonBySandboxId.get(candidateId);
+      const nextTs = row.updatedAt.getTime();
+      if (!prev || nextTs > prev.updatedAtMs) {
+        reasonBySandboxId.set(candidateId, {
+          reason: row.stopReason,
+          updatedAtMs: nextTs,
+        });
+      }
+    }
+
     const sandboxesWithLaunchType = sandboxes.map((sandbox) => {
       const poolRow = poolBySandboxId.get(sandbox.id);
       const launchType = poolRow
@@ -41,6 +71,10 @@ export async function GET() {
       return {
         ...sandbox,
         launchType,
+        stopReason:
+          sandbox.status === "running"
+            ? null
+            : (reasonBySandboxId.get(sandbox.id)?.reason ?? "unknown"),
       };
     });
 

@@ -5,6 +5,7 @@ import { db } from "@/lib/db/client";
 import { adminIncidents, workspaces } from "@/lib/db/schema";
 import { buildGoldenSnapshot } from "@/lib/sandbox/build-golden-snapshot";
 import { recordAdminAction } from "@/lib/admin/ops";
+import { markWorkspaceStoppedWithOptions } from "@/lib/sandbox/mark-workspace-stopped";
 
 const SAFE_ACTIONS = new Set([
   "reconcile_workspace",
@@ -66,11 +67,24 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         return NextResponse.json({ error: "targetId required" }, { status: 400 });
       }
 
+      const [current] = await db
+        .select({
+          id: workspaces.id,
+          sandboxId: workspaces.sandboxId,
+        })
+        .from(workspaces)
+        .where(eq(workspaces.id, body.targetId));
+      if (!current) {
+        return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+      }
+      await markWorkspaceStoppedWithOptions(current.id, {
+        reason: "admin_reconcile",
+        sandboxId: current.sandboxId,
+      });
       const [workspace] = await db
-        .update(workspaces)
-        .set({ status: "stopped", sandboxId: null, updatedAt: new Date() })
-        .where(eq(workspaces.id, body.targetId))
-        .returning();
+        .select()
+        .from(workspaces)
+        .where(eq(workspaces.id, body.targetId));
 
       result = { workspaceId: workspace?.id ?? null, status: workspace?.status ?? null };
     }

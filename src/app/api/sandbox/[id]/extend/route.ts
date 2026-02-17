@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { extendSandboxTimeout, getSandbox } from "@/lib/sandbox/client";
 import { getAuthedWorkspace } from "@/lib/api/get-authed-workspace";
 import { markWorkspaceStopped } from "@/lib/sandbox/mark-workspace-stopped";
-import { MAX_SANDBOX_LIFETIME_MS } from "@/lib/sandbox/limits";
+import { MAX_SANDBOX_TIMEOUT_MS } from "@/lib/sandbox/limits";
 import { enforceRateLimit, RATE_LIMIT_IDS } from "@/lib/rate-limit";
 
 function isSandboxGone(err: unknown): boolean {
@@ -46,7 +46,7 @@ export async function POST(
     const sandbox = await getSandbox(workspace.sandboxId);
     const createdAtMs = new Date(sandbox.createdAt).getTime();
     const currentEnd = createdAtMs + sandbox.timeout;
-    const maxEnd = createdAtMs + MAX_SANDBOX_LIFETIME_MS;
+    const maxEnd = createdAtMs + MAX_SANDBOX_TIMEOUT_MS;
 
     if (currentEnd >= maxEnd) {
       return NextResponse.json({
@@ -82,7 +82,7 @@ export async function POST(
     );
 
     if (gone) {
-      await markWorkspaceStopped(workspace.id);
+      await markWorkspaceStopped(workspace.id, "timeout_expired");
 
       return NextResponse.json(
         {

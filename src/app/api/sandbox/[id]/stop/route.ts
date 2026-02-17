@@ -3,6 +3,7 @@ import { snapshotSandbox, stopSandbox } from "@/lib/sandbox/client";
 import { getAuthedWorkspace } from "@/lib/api/get-authed-workspace";
 import { markWorkspaceStoppedWithOptions } from "@/lib/sandbox/mark-workspace-stopped";
 import { enforceRateLimit, RATE_LIMIT_IDS } from "@/lib/rate-limit";
+import type { WorkspaceStopReason } from "@/types/workspace";
 
 export async function POST(
   req: Request,
@@ -21,6 +22,24 @@ export async function POST(
   const { workspace } = result;
   const body = await req.json().catch(() => ({}));
   const createSnapshot = body?.createSnapshot === true;
+  const reason = ((): WorkspaceStopReason => {
+    if (typeof body?.reason !== "string") {
+      return createSnapshot ? "snapshot_created" : "user_stop";
+    }
+    const allowed: WorkspaceStopReason[] = [
+      "user_stop",
+      "snapshot_created",
+      "display_start_timeout",
+      "timeout_expired",
+      "sandbox_unreachable",
+      "sandbox_inactive",
+      "admin_reconcile",
+      "unknown",
+    ];
+    return allowed.includes(body.reason as WorkspaceStopReason)
+      ? (body.reason as WorkspaceStopReason)
+      : (createSnapshot ? "snapshot_created" : "user_stop");
+  })();
   let snapshotId: string | null = null;
 
   if (createSnapshot && workspace.sandboxId) {
@@ -44,8 +63,8 @@ export async function POST(
   }
 
   await markWorkspaceStoppedWithOptions(workspace.id, createSnapshot
-    ? { snapshotId }
-    : { clearSnapshot: true });
+    ? { snapshotId, reason, sandboxId: workspace.sandboxId }
+    : { clearSnapshot: true, reason, sandboxId: workspace.sandboxId });
 
   return NextResponse.json({ ok: true, snapshotId });
 }

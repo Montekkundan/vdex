@@ -6,6 +6,15 @@ import { eq } from "drizzle-orm";
 import { getSandbox } from "@/lib/sandbox/client";
 import { markWorkspaceStopped } from "@/lib/sandbox/mark-workspace-stopped";
 import { isLiveSandboxStatus } from "@/lib/sandbox/status";
+import type { WorkspaceStopReason } from "@/types/workspace";
+
+function inferTimeoutFromWorkspace(workspace: {
+  runtimeStartedAt: Date | null;
+  timeoutMs: number;
+}): boolean {
+  if (!workspace.runtimeStartedAt) return false;
+  return Date.now() >= workspace.runtimeStartedAt.getTime() + workspace.timeoutMs;
+}
 
 export async function GET() {
   const session = await getSession();
@@ -45,20 +54,31 @@ export async function GET() {
       try {
         const sandbox = await getSandbox(workspace.sandboxId);
         if (!isLiveSandboxStatus(sandbox.status)) {
-          await markWorkspaceStopped(workspace.id);
+          const reason: WorkspaceStopReason =
+            sandbox.status === "stopped" ? "timeout_expired" : "sandbox_inactive";
+          await markWorkspaceStopped(workspace.id, reason);
           reconciled[idx] = {
             ...workspace,
             status: "stopped",
             sandboxId: null,
+            stopReason: reason,
+            stoppedAt: new Date(),
+            lastSandboxId: workspace.sandboxId,
             updatedAt: new Date(),
           };
         }
       } catch {
-        await markWorkspaceStopped(workspace.id);
+        const reason: WorkspaceStopReason = inferTimeoutFromWorkspace(workspace)
+          ? "timeout_expired"
+          : "sandbox_unreachable";
+        await markWorkspaceStopped(workspace.id, reason);
         reconciled[idx] = {
           ...workspace,
           status: "stopped",
           sandboxId: null,
+          stopReason: reason,
+          stoppedAt: new Date(),
+          lastSandboxId: workspace.sandboxId,
           updatedAt: new Date(),
         };
       }

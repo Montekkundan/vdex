@@ -16,7 +16,12 @@ import {
   validateWorkspaceExperience,
   type CreateValidationErrorCode,
 } from "@/lib/runtime/validation";
-import { WORKSPACE_LIMITS } from "@/lib/sandbox/limits";
+import {
+  DEFAULT_SANDBOX_TIMEOUT_MS,
+  MAX_SANDBOX_TIMEOUT_MS,
+  MIN_SANDBOX_TIMEOUT_MS,
+  WORKSPACE_LIMITS,
+} from "@/lib/sandbox/limits";
 import { enforceRateLimit, RATE_LIMIT_IDS } from "@/lib/rate-limit";
 import { resolveSnapshotSource } from "@/lib/sandbox/snapshot-sources";
 import type { SnapshotSource } from "@/lib/pools/constants";
@@ -35,6 +40,7 @@ type CreateWorkspaceBody = {
   experience?: unknown;
   displayClient?: unknown;
   sizeProfile?: unknown;
+  timeoutMs?: unknown;
 };
 
 function createErrorResponse(
@@ -49,8 +55,28 @@ function toProviderErrorResponse(err: unknown) {
   if (err instanceof ProviderRuntimeError) {
     return createErrorResponse(err.code, err.message);
   }
+  if (err instanceof Error && err.message.toLowerCase().includes("timeout")) {
+    return createErrorResponse("UNSUPPORTED_TIMEOUT", err.message, 400);
+  }
 
   return null;
+}
+
+function validateRequestedTimeoutMs(raw: unknown): { ok: true; value: number | null } | { ok: false; message: string } {
+  if (raw === undefined || raw === null) {
+    return { ok: true, value: null };
+  }
+  if (typeof raw !== "number" || !Number.isFinite(raw)) {
+    return { ok: false, message: "timeoutMs must be a finite number" };
+  }
+  const value = Math.round(raw);
+  if (value < MIN_SANDBOX_TIMEOUT_MS || value > MAX_SANDBOX_TIMEOUT_MS) {
+    return {
+      ok: false,
+      message: `timeoutMs must be between ${MIN_SANDBOX_TIMEOUT_MS} and ${MAX_SANDBOX_TIMEOUT_MS} milliseconds`,
+    };
+  }
+  return { ok: true, value };
 }
 
 export async function POST(req: Request) {
@@ -87,7 +113,12 @@ export async function POST(req: Request) {
       snapshotSource,
       snapshotRefId,
       workspaceId,
+      timeoutMs: requestedTimeoutMsRaw,
     } = body;
+    const requestedTimeoutMs = validateRequestedTimeoutMs(requestedTimeoutMsRaw);
+    if (!requestedTimeoutMs.ok) {
+      return createErrorResponse("INVALID_TIMEOUT", requestedTimeoutMs.message);
+    }
 
     // ---- Reconnect path: reuse an existing workspace row ----
     if (workspaceId) {
@@ -165,9 +196,11 @@ export async function POST(req: Request) {
       });
 
       const snapshotId = resolvedSnapshot.snapshotId;
+      const timeoutMs = requestedTimeoutMs.value ?? existingWorkspace.timeoutMs ?? DEFAULT_SANDBOX_TIMEOUT_MS;
+      const canUseWarmPool = timeoutMs === DEFAULT_SANDBOX_TIMEOUT_MS;
 
       let sandbox =
-        resolvedProvider.value === "vercel"
+        resolvedProvider.value === "vercel" && canUseWarmPool
           ? await claimWarmVM({
               userId: session.id,
               provider: resolvedProvider.value,
@@ -182,6 +215,7 @@ export async function POST(req: Request) {
       if (!sandbox) {
         sandbox =
           resolvedProvider.value === "vercel" &&
+          canUseWarmPool &&
           !explicitSnapshotId &&
           resolvedExperience.value === "gui" &&
           resolvedDisplayClient.value === "xpra" &&
@@ -217,6 +251,7 @@ export async function POST(req: Request) {
             },
             displayClient: resolvedDisplayClient.value,
             experience: resolvedExperience.value,
+            timeoutMs,
           });
         } catch (err) {
           const providerError = toProviderErrorResponse(err);
@@ -228,12 +263,17 @@ export async function POST(req: Request) {
         .update(workspaces)
         .set({
           sandboxId: sandbox.sandboxId,
+          lastSandboxId: sandbox.sandboxId,
           snapshotId:
             ("fallback" in sandbox && sandbox.fallback)
               ? null
               : (snapshotId || existingWorkspace.snapshotId),
           displayClient: resolvedDisplayClient.value,
+          timeoutMs,
+          runtimeStartedAt: new Date(sandbox.createdAt),
           status: "active",
+          stopReason: null,
+          stoppedAt: null,
           updatedAt: new Date(),
         })
         .where(eq(workspaces.id, workspaceId))
@@ -345,6 +385,8 @@ export async function POST(req: Request) {
         resolvedSize.error.message,
       );
     }
+    const timeoutMs = requestedTimeoutMs.value ?? DEFAULT_SANDBOX_TIMEOUT_MS;
+    const canUseWarmPool = timeoutMs === DEFAULT_SANDBOX_TIMEOUT_MS;
 
     const randomIcon = WORKSPACE_ICON_NAMES[Math.floor(Math.random() * WORKSPACE_ICON_NAMES.length)];
     let wsName = name || generateWorkspaceName();
@@ -373,6 +415,7 @@ export async function POST(req: Request) {
           experience: resolvedExperience.value,
           displayClient: resolvedDisplayClient.value,
           sizeProfile: resolvedSize.value.id,
+          timeoutMs,
           status: "creating",
         })
         .returning(),
@@ -410,7 +453,7 @@ export async function POST(req: Request) {
     try {
       // Try to claim a pre-warmed VM from the pool (only for default vercel profile)
       sandbox =
-        resolvedProvider.value === "vercel"
+        resolvedProvider.value === "vercel" && canUseWarmPool
           ? await claimWarmVM({
               userId: session.id,
               provider: resolvedProvider.value,
@@ -425,6 +468,7 @@ export async function POST(req: Request) {
       if (!sandbox) {
         sandbox =
           resolvedProvider.value === "vercel" &&
+          canUseWarmPool &&
           !explicitSnapshotId &&
           resolvedExperience.value === "gui" &&
           resolvedDisplayClient.value === "xpra" &&
@@ -459,6 +503,7 @@ export async function POST(req: Request) {
           },
           displayClient: resolvedDisplayClient.value,
           experience: resolvedExperience.value,
+          timeoutMs,
         });
       }
     } catch (provisionErr) {
@@ -527,9 +572,14 @@ export async function POST(req: Request) {
       .update(workspaces)
       .set({
         sandboxId: sandbox.sandboxId,
+        lastSandboxId: sandbox.sandboxId,
         snapshotId:
           ("fallback" in sandbox && sandbox.fallback) ? null : (snapshotId ?? null),
+        timeoutMs,
+        runtimeStartedAt: new Date(sandbox.createdAt),
         status: "active",
+        stopReason: null,
+        stoppedAt: null,
         updatedAt: new Date(),
       })
       .where(eq(workspaces.id, workspace.id))

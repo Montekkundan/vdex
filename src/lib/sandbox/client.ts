@@ -19,8 +19,8 @@ import {
   DBUS_SOCKET_PATH,
 } from "./ecosystem-config";
 import { getDisplayHealthPath } from "@/lib/display-clients";
+import { DEFAULT_SANDBOX_TIMEOUT_MS } from "@/lib/sandbox/limits";
 
-const DEFAULT_TIMEOUT = 45 * 60 * 1000; // 45 minutes (Vercel max: 2700000ms)
 const READINESS_TIMEOUT_MS = 30_000;
 const READINESS_POLL_MS = 1_000;
 
@@ -103,6 +103,7 @@ export async function createSandbox(
   resources?: SandboxResources,
   displayClient: DisplayClient = "xpra",
   experience: WorkspaceExperience = "gui",
+  timeoutMs = DEFAULT_SANDBOX_TIMEOUT_MS,
 ): Promise<CreateSandboxResult> {
   let sandbox: Sandbox;
   let usedSnapshot = false;
@@ -113,7 +114,7 @@ export async function createSandbox(
       sandbox = await Sandbox.create({
         source: { type: "snapshot", snapshotId },
         ports: SANDBOX_PORTS,
-        timeout: DEFAULT_TIMEOUT,
+        timeout: timeoutMs,
         resources: sandboxResources,
       });
       usedSnapshot = true;
@@ -137,7 +138,7 @@ export async function createSandbox(
         sandbox = await Sandbox.create({
           runtime: "node24",
           ports: SANDBOX_PORTS,
-          timeout: DEFAULT_TIMEOUT,
+          timeout: timeoutMs,
           resources: sandboxResources,
         });
       } else {
@@ -148,7 +149,7 @@ export async function createSandbox(
     sandbox = await Sandbox.create({
       runtime: "node24",
       ports: SANDBOX_PORTS,
-      timeout: DEFAULT_TIMEOUT,
+      timeout: timeoutMs,
       resources: sandboxResources,
     });
   }

@@ -1,6 +1,7 @@
 import { db } from "@/lib/db/client";
 import { workspaces } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
+import type { WorkspaceStopReason } from "@/types/workspace";
 
 /**
  * Mark a workspace as stopped with no active sandbox in the database.
@@ -8,26 +9,43 @@ import { eq } from "drizzle-orm";
  * GET /api/sandbox/[id], POST /api/sandbox/[id]/stop, and
  * POST /api/sandbox/[id]/extend.
  */
-export async function markWorkspaceStopped(workspaceId: string) {
-  await db
-    .update(workspaces)
-    .set({ status: "stopped", sandboxId: null, updatedAt: new Date() })
-    .where(eq(workspaces.id, workspaceId));
-}
-
 export async function markWorkspaceStoppedWithOptions(
   workspaceId: string,
-  options?: { snapshotId?: string | null; clearSnapshot?: boolean },
+  options?: {
+    reason?: WorkspaceStopReason;
+    snapshotId?: string | null;
+    clearSnapshot?: boolean;
+    sandboxId?: string | null;
+  },
 ) {
+  const [workspace] = await db
+    .select({
+      sandboxId: workspaces.sandboxId,
+      lastSandboxId: workspaces.lastSandboxId,
+    })
+    .from(workspaces)
+    .where(eq(workspaces.id, workspaceId));
+
+  const stoppedAt = new Date();
   const updates: {
     status: "stopped";
     sandboxId: null;
+    lastSandboxId?: string | null;
+    stopReason?: WorkspaceStopReason | null;
+    stoppedAt: Date;
     updatedAt: Date;
     snapshotId?: string | null;
   } = {
     status: "stopped",
     sandboxId: null,
-    updatedAt: new Date(),
+    lastSandboxId:
+      options?.sandboxId ??
+      workspace?.sandboxId ??
+      workspace?.lastSandboxId ??
+      null,
+    stopReason: options?.reason ?? "unknown",
+    stoppedAt,
+    updatedAt: stoppedAt,
   };
 
   if (options?.clearSnapshot) updates.snapshotId = null;
@@ -37,4 +55,11 @@ export async function markWorkspaceStoppedWithOptions(
     .update(workspaces)
     .set(updates)
     .where(eq(workspaces.id, workspaceId));
+}
+
+export async function markWorkspaceStopped(
+  workspaceId: string,
+  reason: WorkspaceStopReason = "unknown",
+) {
+  await markWorkspaceStoppedWithOptions(workspaceId, { reason });
 }
